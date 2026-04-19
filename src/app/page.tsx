@@ -1,7 +1,15 @@
-import Link from "next/link";
 import { loadAllDatasets, getAllEntries, getAvailableSources } from "@/lib/data";
 import { countTokens, type TokenField } from "@/lib/analyzer";
-import { RANKING_SOURCE_LABELS, type RankingEntry, type RankingSource } from "@/lib/types";
+import {
+  RANKING_SOURCE_LABELS,
+  type RankingDataset,
+  type RankingEntry,
+  type RankingSource,
+} from "@/lib/types";
+import { DataChartsSection } from "@/components/DataCharts";
+import { EmptyLabInvitationCard } from "@/components/EmptyLabInvitationCard";
+import { FilterBarWithRouter } from "@/components/FilterBar";
+import { HomeHero } from "@/components/HomeHero";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
 
 export const dynamic = "force-dynamic";
@@ -41,10 +49,44 @@ function uniqueGenresSorted(entries: RankingEntry[]): string[] {
   );
 }
 
+/** titleTokens と synopsisTokens を合わせたユニーク語数 */
+function uniqueTitleAndSynopsisTokenCount(entries: RankingEntry[]): number {
+  const s = new Set<string>();
+  for (const e of entries) {
+    for (const t of e.titleTokens) s.add(t);
+    for (const t of e.synopsisTokens) s.add(t);
+  }
+  return s.size;
+}
+
+function uniqueTagTokenCount(entries: RankingEntry[]): number {
+  const s = new Set<string>();
+  for (const e of entries) {
+    for (const t of e.tags) s.add(t);
+  }
+  return s.size;
+}
+
 type SearchParamsInput = {
   source?: string | string[];
   genre?: string | string[];
 };
+
+function getEntriesWithSources(
+  datasets: RankingDataset[],
+  selectedGenre: string | null
+): { entries: RankingEntry[]; entrySources: RankingSource[] } {
+  const entries: RankingEntry[] = [];
+  const entrySources: RankingSource[] = [];
+  for (const d of datasets) {
+    for (const e of d.entries) {
+      if (selectedGenre !== null && e.genre !== selectedGenre) continue;
+      entries.push(e);
+      entrySources.push(d.source);
+    }
+  }
+  return { entries, entrySources };
+}
 
 export default async function Home({ searchParams }: { searchParams: SearchParamsInput }) {
   const rawSource = firstParam(searchParams.source);
@@ -62,53 +104,67 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     datasets = datasets.filter((d) => d.source === selectedSource);
   }
 
-  let entries = getAllEntries(datasets);
-
   const selectedGenre: string | null =
     rawGenre !== undefined && genreOptions.includes(rawGenre) ? rawGenre : null;
 
-  if (selectedGenre !== null) {
-    entries = entries.filter((e) => e.genre === selectedGenre);
-  }
+  const { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
 
   const tokensWithCounts = buildTokensWithCounts(entries);
   const availableSources = getAvailableSources();
   const noDataGlobally = allEntriesFlat.length === 0;
 
-  return (
-    <main className="min-h-screen bg-slate-950 p-4 text-slate-100 sm:p-8">
-      <header className="mb-6 sm:mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-amber-400 sm:text-3xl md:text-4xl">タイトラボ</h1>
-        <p className="mt-2 text-sm text-slate-400">ランキング作品のトークンを、出現数に応じてサイズと色で見せます。</p>
-      </header>
+  const uniqueWordCount = uniqueTitleAndSynopsisTokenCount(entries);
+  const uniqueTagCount = uniqueTagTokenCount(entries);
 
-      {noDataGlobally && (
-        <div className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-amber-100/95 sm:px-5">
-          <p className="font-medium text-amber-200">ランキングデータがまだありません</p>
-          <p className="mt-2 text-amber-100/80">
-            <Link
-              href="/admin/ingest"
-              className="font-semibold underline decoration-amber-500/60 underline-offset-2 hover:text-amber-50"
-            >
-              データ取り込み画面
-            </Link>
-            （<code className="rounded bg-slate-900/80 px-1 text-xs">/admin/ingest</code>
-            ）で JSON を検証し、リポジトリの{" "}
-            <code className="rounded bg-slate-900/80 px-1 text-xs">data/rankings/</code> に保存してからデプロイしてください。手順はルートの{" "}
-            <span className="font-medium text-amber-200">PDF_TO_JSON_PROMPT.md</span> と README を参照してください。
-          </p>
-        </div>
+  const hasEntries = entries.length > 0;
+
+  return (
+    <main className="min-h-screen">
+      <HomeHero
+        titleCount={entries.length}
+        uniqueWordCount={uniqueWordCount}
+        uniqueTagCount={uniqueTagCount}
+        showTokenCloudAnchor={hasEntries}
+      />
+
+      {noDataGlobally && <EmptyLabInvitationCard />}
+
+      {!noDataGlobally && (
+        <section className="sticky top-16 z-20 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md">
+          <div className="mx-auto max-w-6xl px-6 py-4">
+            <FilterBarWithRouter
+              sources={availableSources}
+              genres={genreOptions}
+              currentSource={selectedSource}
+              currentGenre={selectedGenre}
+              totalCount={entries.length}
+            />
+          </div>
+        </section>
       )}
 
-      <TitleAnatomy
-        tokensWithCounts={tokensWithCounts}
-        totalEntries={entries.length}
-        entries={entries}
-        availableSources={availableSources}
-        selectedSource={selectedSource}
-        genreOptions={genreOptions}
-        selectedGenre={selectedGenre}
-      />
+      {!noDataGlobally && !hasEntries && (
+        <p className="mx-auto max-w-6xl px-6 py-16 text-center text-sm text-slate-500">
+          条件に一致するタイトルがありません。フィルタを調整してください。
+        </p>
+      )}
+
+      {hasEntries && (
+        <>
+          <div id="token-cloud" className="scroll-mt-28 p-4 sm:scroll-mt-32 sm:p-8">
+            <TitleAnatomy
+              tokensWithCounts={tokensWithCounts}
+              totalEntries={entries.length}
+              entries={entries}
+              corpusIsEmpty={noDataGlobally}
+              selectedSource={selectedSource}
+              selectedGenre={selectedGenre}
+            />
+          </div>
+
+          <DataChartsSection entries={entries} entrySources={entrySources} />
+        </>
+      )}
     </main>
   );
 }

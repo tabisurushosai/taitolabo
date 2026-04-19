@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { validateDataset } from "@/lib/validator";
 import type { RankingDataset } from "@/lib/types";
+
+const KAIHATSU_SESSION_KEY = "kaihatsu_unlocked";
+const KAIHATSU_PASSWORD = "0379";
 
 const PLACEHOLDER = `{
   "source": "narou_daily_total",
@@ -36,7 +39,21 @@ function countTokensInEntries(
   return n;
 }
 
-export default function AdminIngestPage() {
+export default function KaihatsuPage() {
+  const [unlocked, setUnlocked] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordWrong, setPasswordWrong] = useState(false);
+
+  useLayoutEffect(() => {
+    try {
+      if (sessionStorage.getItem(KAIHATSU_SESSION_KEY) === "1") {
+        setUnlocked(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const [text, setText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null);
@@ -67,6 +84,22 @@ export default function AdminIngestPage() {
     return validData.entries.slice(0, 3).map((e) => e.title);
   }, [validData]);
 
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === KAIHATSU_PASSWORD) {
+      try {
+        sessionStorage.setItem(KAIHATSU_SESSION_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      setUnlocked(true);
+      setPasswordWrong(false);
+      setPassword("");
+    } else {
+      setPasswordWrong(true);
+    }
+  };
+
   const handleValidate = () => {
     setParseError(null);
     setValidationErrors(null);
@@ -75,8 +108,8 @@ export default function AdminIngestPage() {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
-    } catch (e) {
-      setParseError(e instanceof Error ? e.message : "JSON のパースに失敗しました。");
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : "JSON のパースに失敗しました。");
       return;
     }
 
@@ -88,8 +121,41 @@ export default function AdminIngestPage() {
     setValidData(result.data);
   };
 
+  if (!unlocked) {
+    return (
+      <main className="flex min-h-screen min-w-0 flex-col items-center justify-center p-4">
+        <form
+          onSubmit={handlePasswordSubmit}
+          className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-xl shadow-black/20"
+        >
+          <label htmlFor="kaihatsu-password" className="block text-center text-sm font-medium text-slate-300">
+            パスワードを入力してください
+          </label>
+          <input
+            id="kaihatsu-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setPasswordWrong(false);
+            }}
+            className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-slate-100 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+          />
+          {passwordWrong && <p className="mt-3 text-center text-sm text-red-400">パスワードが違います</p>}
+          <button
+            type="submit"
+            className="mt-5 w-full rounded-full bg-amber-400 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-amber-500/20 transition-colors hover:bg-amber-300"
+          >
+            送信
+          </button>
+        </form>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen min-w-0 bg-slate-950 p-4 text-slate-100 sm:p-8">
+    <main className="min-h-screen min-w-0 p-4 sm:p-8">
       <div className="mb-6">
         <Link href="/" className="text-sm font-medium text-amber-400/90 hover:text-amber-300">
           ← タイトラボに戻る
@@ -98,9 +164,9 @@ export default function AdminIngestPage() {
 
       <div className="mx-auto max-w-3xl min-w-0 space-y-6">
         <header>
-          <h1 className="text-2xl font-bold leading-tight text-amber-400 sm:text-3xl">ランキングデータ取り込み</h1>
+          <h1 className="text-2xl font-bold leading-tight text-amber-400 sm:text-3xl">開発しちゃいよう</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            Claude Opus で PDF→JSON 変換したものをここに貼り付けてください。正しい形式か検証後、
+            ランキングデータを投入する内部ツールです。Claude Opus で PDF→JSON 変換したものをここに貼り付けてください。正しい形式か検証後、
             <code className="rounded bg-slate-800 px-1 text-amber-200/90">data/rankings/</code>{" "}
             に保存するファイル内容を出力します。
           </p>

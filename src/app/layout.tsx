@@ -1,7 +1,16 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Noto_Sans_JP } from "next/font/google";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
+
+const notoSansJp = Noto_Sans_JP({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-noto-sans-jp",
+  display: "swap",
+});
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -27,10 +36,11 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${notoSansJp.className} ${notoSansJp.variable} ${geistSans.variable} ${geistMono.variable} bg-slate-950 text-slate-100 antialiased`}
       >
         <SiteHeader />
-        {children}
+        <div className="min-h-screen bg-slate-950">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );

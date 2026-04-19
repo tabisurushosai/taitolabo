@@ -1,19 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CopyTextButton } from "@/components/CopyTextButton";
-import { RANKING_SOURCE_LABELS, type RankingEntry, type RankingSource } from "@/lib/types";
+import { AnimatePresence, motion } from "framer-motion";
+import { TokenDetailModal } from "@/components/TokenDetailModal";
+import { type RankingEntry, type RankingSource } from "@/lib/types";
 import { formatTitleAnatomyTokenShareText } from "@/lib/share-text";
 import { coOccurringTokens, type TokenField } from "@/lib/analyzer";
+import { hslForTokenField } from "@/lib/token-colors";
 
 type Props = {
   tokensWithCounts: Array<{ token: string; count: number; field: TokenField }>;
   totalEntries: number;
   entries: RankingEntry[];
-  availableSources: RankingSource[];
+  /** data/rankings に JSON が1件も無いとき true（フィルタで 0 件になった場合は false） */
+  corpusIsEmpty: boolean;
   selectedSource: RankingSource | null;
-  genreOptions: string[];
   selectedGenre: string | null;
 };
 
@@ -25,36 +26,23 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "tags", label: "タグ" },
 ];
 
-/** text-sm 相当 〜 text-5xl 相当（px） */
-const FONT_MIN_PX = 14;
-const FONT_MAX_PX = 48;
-
-function interpolateCount(
-  count: number,
-  minCount: number,
-  maxCount: number
-): number {
-  if (maxCount === minCount) return 0.5;
-  return (count - minCount) / (maxCount - minCount);
+/** sqrt スケール: 最小 12px、最大 60px */
+function fontSizePxSqrt(count: number, minC: number, maxC: number): number {
+  if (maxC === minC) {
+    return 12 + Math.sqrt(0.5) * 48;
+  }
+  const t = Math.max(0, Math.min(1, (count - minC) / (maxC - minC)));
+  return 12 + Math.sqrt(t) * 48;
 }
 
-function fontSizePx(count: number, minCount: number, maxCount: number): number {
-  const t = interpolateCount(count, minCount, maxCount);
-  return FONT_MIN_PX + t * (FONT_MAX_PX - FONT_MIN_PX);
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
-
-function listHref(source: RankingSource | null, genre: string | null): string {
-  const sp = new URLSearchParams();
-  if (source !== null) sp.set("source", source);
-  if (genre !== null && genre.length > 0) sp.set("genre", genre);
-  const q = sp.toString();
-  return q ? `/?${q}` : "/";
-}
-
-const filterLinkClass = (active: boolean) =>
-  `inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-    active ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20" : "bg-slate-800/90 text-slate-300 hover:bg-slate-700"
-  }`;
 
 function countEntriesWithToken(
   list: RankingEntry[],
@@ -80,17 +68,20 @@ function topTitlesByRank(
     .slice(0, limit);
 }
 
+type SortMode = "count" | "random";
+
 export function TitleAnatomy({
   tokensWithCounts,
   totalEntries,
   entries,
-  availableSources,
+  corpusIsEmpty,
   selectedSource,
-  genreOptions,
   selectedGenre,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("titleTokens");
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
+  const [hoveredToken, setHoveredToken] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("count");
 
   const setTab = (id: TabId) => {
     setActiveTab(id);
@@ -98,10 +89,15 @@ export function TitleAnatomy({
   };
 
   const filtered = useMemo(() => {
-    return tokensWithCounts
-      .filter((row) => row.field === activeTab)
-      .sort((a, b) => b.count - a.count);
+    return tokensWithCounts.filter((row) => row.field === activeTab);
   }, [tokensWithCounts, activeTab]);
+
+  const ordered = useMemo(() => {
+    if (sortMode === "count") {
+      return [...filtered].sort((a, b) => b.count - a.count);
+    }
+    return shuffle([...filtered]);
+  }, [filtered, sortMode]);
 
   const { minCount, maxCount } = useMemo(() => {
     if (filtered.length === 0) return { minCount: 0, maxCount: 0 };
@@ -113,6 +109,14 @@ export function TitleAnatomy({
     }
     return { minCount: minV, maxCount: maxV };
   }, [filtered]);
+
+  const floatDurations = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const row of ordered) {
+      m.set(`${activeTab}:${row.token}`, 3 + Math.random() * 2);
+    }
+    return m;
+  }, [ordered, activeTab]);
 
   const coOccurrenceMap = useMemo(() => {
     if (!selectedToken) return new Map<string, number>();
@@ -158,215 +162,170 @@ export function TitleAnatomy({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/30 p-4 sm:p-5">
-        <p className="text-base font-semibold text-slate-100">
-          <span className="tabular-nums text-amber-400">{totalEntries}</span>
-          件のタイトルを解剖中
-        </p>
-
-        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:flex-wrap lg:items-end lg:gap-8">
-          <div className="min-w-0 flex-1 space-y-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">ソース</span>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={listHref(null, selectedGenre)}
-                className={filterLinkClass(selectedSource === null)}
-                scroll={false}
-              >
-                全ソース
-              </Link>
-              {availableSources.map((src) => (
-                <Link
-                  key={src}
-                  href={listHref(src, selectedGenre)}
-                  className={filterLinkClass(selectedSource === src)}
-                  scroll={false}
-                >
-                  {RANKING_SOURCE_LABELS[src]}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1 space-y-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">ジャンル</span>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={listHref(selectedSource, null)}
-                className={filterLinkClass(selectedGenre === null)}
-                scroll={false}
-              >
-                全ジャンル
-              </Link>
-              {genreOptions.map((g) => (
-                <Link
-                  key={g}
-                  href={listHref(selectedSource, g)}
-                  className={filterLinkClass(selectedGenre === g)}
-                  scroll={false}
-                  title={g}
-                >
-                  {g}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="shrink-0">
-            <Link
-              href="/"
-              className="inline-flex items-center rounded-full border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-amber-500/50 hover:text-amber-200"
-              scroll={false}
-            >
-              リセット
-            </Link>
-          </div>
+      {corpusIsEmpty && entries.length === 0 ? (
+        <div
+          className="flex min-h-[50vh] w-full flex-col items-center justify-center px-6 py-24 text-center text-slate-500"
+          role="status"
+        >
+          <p className="text-base font-medium sm:text-lg">データがまだありません</p>
+          <p className="mt-6 max-w-lg text-sm leading-relaxed sm:text-base">
+            /kaihatsu からランキングデータを投入すると、ここに解剖結果が表示されます
+          </p>
         </div>
-      </div>
-
-      <div className="flex min-h-[60vh] flex-col gap-6 lg:flex-row lg:items-start">
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3" role="tablist" aria-label="表示フィールド">
-            {TABS.map((tab) => {
-              const active = activeTab === tab.id;
-              return (
+      ) : (
+        <div className="flex min-h-[60vh] w-full flex-col gap-6">
+          <div className="flex min-w-0 w-full flex-col gap-4">
+            <div className="flex flex-wrap items-end gap-x-3 gap-y-2 border-b border-slate-800 pb-3">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="表示フィールド">
+                {TABS.map((tab) => {
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setTab(tab.id)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                        active
+                          ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20"
+                          : "bg-slate-800/90 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                <span className="text-xs text-slate-500">並び順</span>
                 <button
-                  key={tab.id}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setTab(tab.id)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20"
-                      : "bg-slate-800/90 text-slate-300 hover:bg-slate-700"
+                  onClick={() => setSortMode("count")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    sortMode === "count"
+                      ? "bg-slate-700 text-amber-200 ring-1 ring-amber-500/40"
+                      : "bg-slate-800/80 text-slate-400 hover:bg-slate-700"
                   }`}
                 >
-                  {tab.label}
+                  出現数順
                 </button>
-              );
-            })}
-          </div>
-
-          <div
-            className="flex flex-wrap content-start gap-x-3 gap-y-4 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 sm:p-6"
-            role="tabpanel"
-          >
-            {filtered.length === 0 ? (
-              <p className="text-sm text-slate-500">このタブに表示するトークンがありません。</p>
-            ) : (
-              filtered.map((row) => {
-                const selected = selectedToken === row.token;
-                return (
-                  <button
-                    key={`${activeTab}-${row.token}`}
-                    type="button"
-                    onClick={() => setSelectedToken(row.token)}
-                    className={`inline-block cursor-pointer rounded-lg px-2 py-1 text-amber-400 transition-transform duration-200 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] hover:z-10 hover:scale-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
-                      selected ? "ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-950" : ""
-                    }`}
-                    style={{
-                      fontSize: `${fontSizePx(row.count, minCount, maxCount)}px`,
-                      fontWeight: 600,
-                    }}
-                    title={`${row.token}（${row.count}）`}
-                  >
-                    {row.token}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <aside className="w-full shrink-0 self-start rounded-2xl border border-slate-800 bg-slate-900/50 p-4 lg:sticky lg:top-8 lg:w-80">
-          {selectedToken === null ? (
-            <>
-              <p className="text-sm leading-relaxed text-slate-500">
-                トークンをクリックすると、共起語や該当作品が表示されます。
-              </p>
-              <div className="mt-4 min-h-[120px] rounded-xl border border-dashed border-slate-700/80 bg-slate-950/40" />
-              <p className="mt-3 text-xs text-slate-600">集計対象: {totalEntries} エントリ</p>
-            </>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="min-w-0 flex-1 break-words text-2xl font-bold leading-tight text-amber-300">
-                  {selectedToken}
-                </h2>
                 <button
                   type="button"
-                  onClick={() => setSelectedToken(null)}
-                  className="shrink-0 rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100"
-                  aria-label="選択を解除"
+                  onClick={() => setSortMode("random")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    sortMode === "random"
+                      ? "bg-slate-700 text-amber-200 ring-1 ring-amber-500/40"
+                      : "bg-slate-800/80 text-slate-400 hover:bg-slate-700"
+                  }`}
                 >
-                  <span className="text-xl leading-none" aria-hidden>
-                    ×
-                  </span>
+                  ランダム
                 </button>
               </div>
-
-              <p className="text-sm text-slate-300">
-                このトークンを含む作品数：
-                <span className="font-semibold tabular-nums text-amber-400">
-                  {" "}
-                  {containingCount}
-                </span>
-                <span className="text-slate-500"> / 全{totalEntries}件中</span>
-              </p>
-
-              <CopyTextButton
-                text={tokenShareText}
-                fallbackRows={6}
-                className="w-full rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-amber-500/50 hover:text-amber-100"
-              >
-                この語の統計をコピー
-              </CopyTextButton>
-
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">共起 TOP10</h3>
-                {coOccurrenceTop10.length === 0 ? (
-                  <p className="text-xs text-slate-600">他に共起するトークンはありません。</p>
-                ) : (
-                  <ul className="flex flex-wrap gap-2">
-                    {coOccurrenceTop10.map(([tok, cnt]) => (
-                      <li key={tok}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedToken(tok)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-500/20"
-                        >
-                          <span>{tok}</span>
-                          <span className="tabular-nums text-slate-400">{cnt}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  該当タイトル（rank 上位3件）
-                </h3>
-                {topTitles.length === 0 ? (
-                  <p className="text-xs text-slate-600">該当作品がありません。</p>
-                ) : (
-                  <ol className="list-decimal space-y-2 pl-4 text-sm text-slate-200">
-                    {topTitles.map((e) => (
-                      <li key={`${e.rank}-${e.title}`} className="marker:text-amber-500/80">
-                        <span className="text-slate-500">#{e.rank}</span> {e.title}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </section>
-
-              <p className="text-xs text-slate-600">集計対象: {totalEntries} エントリ</p>
             </div>
-          )}
-        </aside>
-      </div>
+
+            <div className="relative min-h-[120px] rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 sm:p-6" role="tabpanel">
+              {ordered.length === 0 ? (
+                <p className="text-sm text-slate-500">このタブに表示するトークンがありません。</p>
+              ) : (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    className="flex flex-wrap justify-center gap-x-3 gap-y-4"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                  >
+                    {ordered.map((row, index) => {
+                      const isSelected = selectedToken === row.token;
+                      const dimOthersSelected = selectedToken !== null && !isSelected;
+                      const dimSiblingsHover =
+                        hoveredToken !== null && hoveredToken !== row.token && selectedToken === null;
+                      const opacity = dimOthersSelected ? 0.3 : dimSiblingsHover ? 0.4 : 1;
+
+                      const fontSize = fontSizePxSqrt(row.count, minCount, maxCount);
+                      const color = hslForTokenField(activeTab, row.count, minCount, maxCount);
+                      const floatDur = floatDurations.get(`${activeTab}:${row.token}`) ?? 4;
+
+                      let scale = 1;
+                      if (isSelected) scale = 1.3;
+                      else if (hoveredToken === row.token) scale = 1.15;
+
+                      const stagger = index * 0.03;
+
+                      return (
+                        <motion.span
+                          key={`${activeTab}-${sortMode}-${row.token}`}
+                          className="inline-block will-change-transform"
+                          style={{
+                            zIndex: isSelected ? 30 : hoveredToken === row.token ? 20 : 1,
+                          }}
+                          animate={{
+                            y: [0, 3, 0, -3, 0],
+                          }}
+                          transition={{
+                            y: {
+                              repeat: Infinity,
+                              duration: floatDur,
+                              ease: "easeInOut",
+                            },
+                          }}
+                        >
+                          <motion.button
+                            type="button"
+                            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+                            animate={{
+                              opacity,
+                              scale,
+                              y: 0,
+                            }}
+                            transition={{
+                              opacity: { duration: 0.4, delay: stagger, ease: "easeOut" },
+                              scale: { duration: 0.4, delay: stagger, ease: "easeOut" },
+                              y: { duration: 0.4, delay: stagger, ease: "easeOut" },
+                            }}
+                            onClick={() => setSelectedToken(row.token)}
+                            onMouseEnter={() => setHoveredToken(row.token)}
+                            onMouseLeave={() => setHoveredToken(null)}
+                            className={`relative cursor-pointer rounded-lg px-2 py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
+                              isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950" : ""
+                            }`}
+                            style={{
+                              fontSize: `${fontSize}px`,
+                              color,
+                            }}
+                            title={`${row.token}（${row.count}）`}
+                          >
+                            {row.token}
+                          </motion.button>
+                        </motion.span>
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
+
+          <p className="text-center text-sm text-slate-600">トークンをクリックすると詳細が開きます。</p>
+        </div>
+      )}
+
+      <TokenDetailModal
+        isOpen={selectedToken !== null}
+        token={selectedToken ?? ""}
+        field={activeTab}
+        totalEntries={totalEntries}
+        containingCount={containingCount}
+        minCount={minCount}
+        maxCount={maxCount}
+        coOccurrenceTop10={coOccurrenceTop10}
+        topTitles={topTitles}
+        shareText={tokenShareText}
+        onClose={() => setSelectedToken(null)}
+        onSelectToken={setSelectedToken}
+      />
     </div>
   );
 }
