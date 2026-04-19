@@ -5,6 +5,7 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { validateDataset } from "@/lib/validator";
 import type { RankingDataset } from "@/lib/types";
+import { KaihatsuRankingsList } from "./KaihatsuRankingsList";
 
 const KAIHATSU_SESSION_KEY = "kaihatsu_unlocked";
 const KAIHATSU_PASSWORD = "0379";
@@ -39,10 +40,13 @@ function countTokensInEntries(
   return n;
 }
 
+type TabId = "ingest" | "list";
+
 export default function KaihatsuPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordWrong, setPasswordWrong] = useState(false);
+  const [tab, setTab] = useState<TabId>("ingest");
 
   useLayoutEffect(() => {
     try {
@@ -172,6 +176,35 @@ export default function KaihatsuPage() {
           </p>
         </header>
 
+        <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-1">
+          <button
+            type="button"
+            onClick={() => setTab("ingest")}
+            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "ingest"
+                ? "border-b-2 border-amber-400 text-amber-300"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            JSONを検証
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("list")}
+            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "list"
+                ? "border-b-2 border-amber-400 text-amber-300"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            取り込み一覧・削除
+          </button>
+        </div>
+
+        {tab === "list" && <KaihatsuRankingsList apiPassword={KAIHATSU_PASSWORD} />}
+
+        {tab === "ingest" && (
+          <>
         <div className="space-y-2">
           <label htmlFor="ingest-json" className="block text-sm font-medium text-slate-300">
             JSON
@@ -285,6 +318,8 @@ export default function KaihatsuPage() {
             してからデプロイする運用を想定しています。
           </p>
         </div>
+          </>
+        )}
       </div>
     </main>
   );

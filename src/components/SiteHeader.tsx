@@ -3,10 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV = [
+const NAV: Array<{
+  href: string;
+  label: string;
+  shortLabel?: string;
+}> = [
   { href: "/", label: "タイトラボ" },
   { href: "/diagnose", label: "自分で診断" },
-] as const;
+  { href: "/kaihatsu", label: "データ取り込み", shortLabel: "データ" },
+];
 
 function navLinkClass(active: boolean) {
   return `rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200 sm:px-4 ${
@@ -29,17 +34,31 @@ export function SiteHeader() {
           タイトラボ
         </Link>
         <nav
-          className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2"
+          className="flex shrink flex-wrap items-center justify-end gap-1.5 sm:gap-2"
           aria-label="メイン"
         >
           {NAV.map((item) => {
             const active =
               item.href === "/"
                 ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                : item.href === "/kaihatsu"
+                  ? pathname === "/kaihatsu" || pathname.startsWith("/kaihatsu/")
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link key={item.href} href={item.href} className={navLinkClass(active)}>
-                {item.label}
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.shortLabel ? item.label : undefined}
+                className={navLinkClass(active)}
+              >
+                {item.shortLabel ? (
+                  <>
+                    <span className="sm:hidden">{item.shortLabel}</span>
+                    <span className="hidden sm:inline">{item.label}</span>
+                  </>
+                ) : (
+                  item.label
+                )}
               </Link>
             );
           })}
