@@ -2,6 +2,9 @@
 
 なろう・カクヨムなどのランキング作品タイトルを「解剖」して眺める Web アプリです。トークンの出現数をクラウド表示し、任意のタイトル案をランキング語彙と照らした診断も行えます。
 
+- **本番**: [https://taitolabo.vercel.app](https://taitolabo.vercel.app)
+- **ソース**: [github.com/tabisurushosai/taitolabo](https://github.com/tabisurushosai/taitolabo)
+
 ## プロジェクト概要
 
 | ページ | 説明 |
