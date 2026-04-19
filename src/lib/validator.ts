@@ -2,10 +2,9 @@ import { type RankingDataset, type RankingSource } from "./types";
 
 const VALID_SOURCES: RankingSource[] = [
   "narou_daily_total",
-  "narou_daily_isekai_ren",
-  "narou_daily_humandrama",
+  "narou_weekly_total",
+  "kakuyomu_daily_total",
   "kakuyomu_weekly_total",
-  "kakuyomu_weekly_romcom",
 ];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

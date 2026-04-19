@@ -1,16 +1,14 @@
 export type RankingSource =
   | "narou_daily_total"
-  | "narou_daily_isekai_ren"
-  | "narou_daily_humandrama"
-  | "kakuyomu_weekly_total"
-  | "kakuyomu_weekly_romcom";
+  | "narou_weekly_total"
+  | "kakuyomu_daily_total"
+  | "kakuyomu_weekly_total";
 
 export const RANKING_SOURCE_LABELS: Record<RankingSource, string> = {
   narou_daily_total: "なろう 日間総合",
-  narou_daily_isekai_ren: "なろう 日間 異世界恋愛",
-  narou_daily_humandrama: "なろう 日間 ヒューマンドラマ",
+  narou_weekly_total: "なろう 週間総合",
+  kakuyomu_daily_total: "カクヨム 日間総合",
   kakuyomu_weekly_total: "カクヨム 週間総合",
-  kakuyomu_weekly_romcom: "カクヨム 週間ラブコメ",
 };
 
 export type RankingEntry = {

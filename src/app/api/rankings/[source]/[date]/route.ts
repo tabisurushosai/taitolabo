@@ -7,10 +7,9 @@ export const dynamic = "force-dynamic";
 
 const VALID_SOURCES: RankingSource[] = [
   "narou_daily_total",
-  "narou_daily_isekai_ren",
-  "narou_daily_humandrama",
+  "narou_weekly_total",
+  "kakuyomu_daily_total",
   "kakuyomu_weekly_total",
-  "kakuyomu_weekly_romcom",
 ];
 
 export async function DELETE(
