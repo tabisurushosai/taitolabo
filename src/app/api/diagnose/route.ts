@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadAllDatasets, loadDatasetsBySource, getAllEntries } from "@/lib/data";
+import { loadAllDatasets, loadDatasetsBySource } from "@/lib/data";
 import {
   calculateCorrelationScore,
   findSimilarEntries,
@@ -7,6 +7,8 @@ import {
   detectKnownTokensInInput,
 } from "@/lib/analyzer";
 import { RANKING_SOURCE_LABELS, type RankingSource } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 function isRankingSource(s: string): s is RankingSource {
   return Object.prototype.hasOwnProperty.call(RANKING_SOURCE_LABELS, s);
@@ -36,8 +38,8 @@ export async function POST(req: NextRequest) {
     }
     if (title.length > 200) return NextResponse.json({ error: "title too long" }, { status: 400 });
 
-    const datasets = source ? loadDatasetsBySource(source) : loadAllDatasets();
-    const entries = getAllEntries(datasets);
+    const datasets = source ? await loadDatasetsBySource(source) : await loadAllDatasets();
+    const entries = datasets.flatMap((d) => d.entries);
     if (entries.length === 0) {
       return NextResponse.json(
         { error: "ランキングデータがありません", code: "no_ranking_data" as const },

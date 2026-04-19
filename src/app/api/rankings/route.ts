@@ -1,35 +1,63 @@
-import { NextResponse } from "next/server";
-import { deleteRankingFile, listRankingFileInfos } from "@/lib/data";
+import { NextRequest, NextResponse } from "next/server";
+import { loadAllDatasets, saveDataset } from "@/lib/data";
+import { getClientIp, readLimiter, writeLimiter } from "@/lib/ratelimit";
+import { validateDataset } from "@/lib/validator";
 
 export const dynamic = "force-dynamic";
 
-const PASSWORD = process.env.KAIHATSU_PASSWORD ?? "0379";
+export async function POST(req: NextRequest) {
+  const ip = getClientIp(req.headers);
+  const { success } = await writeLimiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: "rate_limit_exceeded" },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
 
-export async function GET() {
   try {
-    return NextResponse.json({ files: listRankingFileInfos() });
-  } catch {
-    return NextResponse.json({ error: "一覧の取得に失敗しました。" }, { status: 500 });
+    const body: unknown = await req.json();
+    const result = validateDataset(body);
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: "validation_failed", details: result.errors },
+        { status: 400 }
+      );
+    }
+    await saveDataset(result.data);
+    return NextResponse.json({
+      ok: true,
+      source: result.data.source,
+      date: result.data.date,
+      entriesCount: result.data.entries.length,
+    });
+  } catch (e) {
+    console.error("POST /api/rankings error:", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
-export async function DELETE(request: Request) {
-  let body: { password?: string; filename?: string };
+export async function GET(req: NextRequest) {
+  const ip = getClientIp(req.headers);
+  const { success } = await readLimiter.limit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: "rate_limit_exceeded" },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "JSON が不正です。" }, { status: 400 });
+    const datasets = await loadAllDatasets();
+    const summary = datasets.map((d) => ({
+      source: d.source,
+      date: d.date,
+      entriesCount: d.entries.length,
+    }));
+    summary.sort((a, b) => b.date.localeCompare(a.date) || a.source.localeCompare(b.source));
+    return NextResponse.json({ datasets: summary });
+  } catch (e) {
+    console.error("GET /api/rankings error:", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
-  if (body.password !== PASSWORD) {
-    return NextResponse.json({ error: "パスワードが違います。" }, { status: 401 });
-  }
-  if (!body.filename || typeof body.filename !== "string") {
-    return NextResponse.json({ error: "filename が必要です。" }, { status: 400 });
-  }
-  const result = deleteRankingFile(body.filename);
-  if (!result.ok) {
-    const status = result.error.includes("本番環境") ? 403 : 400;
-    return NextResponse.json({ error: result.error }, { status });
-  }
-  return NextResponse.json({ ok: true });
 }

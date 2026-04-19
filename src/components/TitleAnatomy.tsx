@@ -12,7 +12,7 @@ type Props = {
   tokensWithCounts: Array<{ token: string; count: number; field: TokenField }>;
   totalEntries: number;
   entries: RankingEntry[];
-  /** data/rankings に JSON が1件も無いとき true（フィルタで 0 件になった場合は false） */
+  /** ランキングコーパスが空のとき true（フィルタで 0 件になった場合は false） */
   corpusIsEmpty: boolean;
   selectedSource: RankingSource | null;
   selectedGenre: string | null;
@@ -169,7 +169,7 @@ export function TitleAnatomy({
         >
           <p className="text-base font-medium sm:text-lg">データがまだありません</p>
           <p className="mt-6 max-w-lg text-sm leading-relaxed sm:text-base">
-            /kaihatsu からランキングデータを投入すると、ここに解剖結果が表示されます
+            データ取り込み（/kaihatsu）でランキングを保存すると、ここに解剖結果が表示されます
           </p>
         </div>
       ) : (

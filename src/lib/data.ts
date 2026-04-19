@@ -1,104 +1,56 @@
-import fs from "fs";
-import path from "path";
-import { RankingDataset, RankingSource, RankingEntry } from "./types";
+import { getRedis } from "./redis";
+import type { RankingDataset, RankingEntry, RankingSource } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "data", "rankings");
+const INDEX_KEY = "rankings:index";
 
-export type RankingFileInfo = {
-  filename: string;
-  date: string;
-  source: RankingSource;
-  entryCount: number;
-};
+const datasetKey = (source: RankingSource, date: string) => `ranking:${source}:${date}`;
 
-/** data/rankings の .json 一覧（日付の新しい順） */
-export function listRankingFileInfos(): RankingFileInfo[] {
-  if (!fs.existsSync(DATA_DIR)) return [];
-  const files = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
-  const rows: RankingFileInfo[] = [];
-  for (const filename of files) {
-    try {
-      const raw = fs.readFileSync(path.join(DATA_DIR, filename), "utf-8");
-      const d = JSON.parse(raw) as RankingDataset;
-      rows.push({
-        filename,
-        date: d.date,
-        source: d.source,
-        entryCount: d.entries.length,
-      });
-    } catch (e) {
-      console.error(`Failed to read ${filename}:`, e);
-    }
-  }
-  return rows.sort((a, b) => b.date.localeCompare(a.date));
+/** SET に格納するメンバーは Redis の dataset キー文字列そのもの（パース不要） */
+export async function listDatasetKeys(): Promise<string[]> {
+  const keys = await getRedis().smembers(INDEX_KEY);
+  if (!Array.isArray(keys)) return [];
+  return keys as string[];
 }
 
-export function loadAllDatasets(): RankingDataset[] {
-  if (!fs.existsSync(DATA_DIR)) return [];
-  const files = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
-  return files
-    .map((f) => {
-      try {
-        return JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), "utf-8")) as RankingDataset;
-      } catch (e) {
-        console.error(`Failed to parse ${f}:`, e);
-        return null;
-      }
-    })
-    .filter((d): d is RankingDataset => d !== null);
+export async function loadAllDatasets(): Promise<RankingDataset[]> {
+  const keys = await listDatasetKeys();
+  if (keys.length === 0) return [];
+  const results = await getRedis().mget<RankingDataset[]>(...keys);
+  if (results == null) return [];
+  const arr = Array.isArray(results) ? results : [results];
+  return arr.filter((d): d is RankingDataset => d != null && typeof d === "object" && Array.isArray((d as RankingDataset).entries));
 }
 
-export function loadDatasetsBySource(source: RankingSource): RankingDataset[] {
-  return loadAllDatasets().filter((d) => d.source === source);
+export async function loadDatasetsBySource(source: RankingSource): Promise<RankingDataset[]> {
+  const all = await loadAllDatasets();
+  return all.filter((d) => d.source === source);
 }
 
-export function loadLatestBySource(source: RankingSource): RankingDataset | null {
-  const all = loadDatasetsBySource(source);
-  if (all.length === 0) return null;
-  return all.sort((a, b) => b.date.localeCompare(a.date))[0];
+export async function loadLatestBySource(source: RankingSource): Promise<RankingDataset | null> {
+  const list = await loadDatasetsBySource(source);
+  if (list.length === 0) return null;
+  return list.sort((a, b) => b.date.localeCompare(a.date))[0];
 }
 
-export function getAllEntries(datasets: RankingDataset[]): RankingEntry[] {
+export async function saveDataset(dataset: RankingDataset): Promise<void> {
+  const key = datasetKey(dataset.source, dataset.date);
+  await getRedis().set(key, dataset);
+  await getRedis().sadd(INDEX_KEY, key);
+}
+
+export async function deleteDataset(source: RankingSource, date: string): Promise<void> {
+  const key = datasetKey(source, date);
+  const indexEntry = key;
+  await getRedis().del(key);
+  await getRedis().srem(INDEX_KEY, indexEntry);
+}
+
+export async function getAllEntries(): Promise<RankingEntry[]> {
+  const datasets = await loadAllDatasets();
   return datasets.flatMap((d) => d.entries);
 }
 
-export function getAvailableSources(): RankingSource[] {
-  const all = loadAllDatasets();
+export async function getAvailableSources(): Promise<RankingSource[]> {
+  const all = await loadAllDatasets();
   return Array.from(new Set(all.map((d) => d.source)));
-}
-
-const SAFE_RANKING_JSON = /^[a-zA-Z0-9_.-]+\.json$/;
-
-/**
- * ローカル開発では data/rankings のファイルを削除できる。
- * Vercel 等の本番では FS が読み取り専用のため失敗し、エラーメッセージを返す。
- */
-export function deleteRankingFile(
-  filename: string
-): { ok: true } | { ok: false; error: string } {
-  const base = path.basename(filename);
-  if (!SAFE_RANKING_JSON.test(base) || base !== filename) {
-    return { ok: false, error: "不正なファイル名です。" };
-  }
-  const full = path.join(DATA_DIR, base);
-  if (!fs.existsSync(full)) {
-    return { ok: false, error: "ファイルが見つかりません。" };
-  }
-  try {
-    fs.unlinkSync(full);
-    return { ok: true };
-  } catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException;
-    if (err.code === "EROFS" || err.code === "EPERM" || err.code === "EACCES") {
-      return {
-        ok: false,
-        error:
-          "本番環境ではサーバー上のファイルを削除できません。GitHub で data/rankings/ から該当の JSON を削除して push してください。",
-      };
-    }
-    return {
-      ok: false,
-      error: err.message ? `削除に失敗しました: ${err.message}` : "削除に失敗しました。",
-    };
-  }
 }

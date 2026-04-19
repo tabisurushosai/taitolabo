@@ -11,9 +11,24 @@
 |--------|------|
 | `/` | ランキング由来のトークンクラウドと、語の共起・該当作品の閲覧 |
 | `/diagnose` | 入力タイトルをコーパスと照合したスコア・類似作品・推奨語の表示（任意で AI 寸評） |
-| `/kaihatsu` | PDF 等から作った JSON の検証と、保存用ファイル名・整形 JSON の出力（パスワード保護・ナビ非掲載） |
+| `/kaihatsu` | JSON の検証・**Upstash Redis への保存**・データセット一覧・削除（パスワード保護） |
 
-ランキング本体のデータはリポジトリ内の `data/rankings/*.json` として配布されます。Vercel 本番のサーバーからファイルへ直接書き込むことはせず、ローカルで JSON を追加してコミット・デプロイする運用です。
+ランキング本体のデータは **Upstash Redis**（Vercel の環境変数 `KV_REST_API_URL` / `KV_REST_API_TOKEN`）に保存され、ランタイムで読み書きします。リポジトリの `data/rankings/` は使用しません。
+
+## ローカル開発のセットアップ
+
+Upstash Redis を使うため、ローカルにも環境変数が必要です。
+
+初回のみ、ターミナルで以下を実行してください：
+
+```bash
+npm i -g vercel         # Vercel CLI をグローバルインストール
+vercel login            # ブラウザが開くのでログイン
+vercel link             # taitolabo プロジェクトにリンク
+vercel env pull .env.local    # 環境変数をローカルに取得
+```
+
+以降、環境変数に変更があれば `vercel env pull .env.local` で再同期してください。
 
 ## ローカルで動かす手順
 
@@ -42,9 +57,9 @@ npm run start
 ## データ追加フロー
 
 1. ランキングの PDF を **Claude Opus** に渡し、ルートの **[PDF_TO_JSON_PROMPT.md](./PDF_TO_JSON_PROMPT.md)** に記載のプロンプトで `RankingDataset` 形式の JSON を生成する。
-2. 生成した JSON を **`/kaihatsu`**（パスワード入力後）に貼り、「検証する」で形式とサマリを確認する。
-3. 検証が通ったら表示された整形 JSON をコピーし、提案ファイル名どおり **`data/rankings/{filename}.json`** に保存する（例: `narou_daily_total_2026-04-19.json`）。
-4. **`git commit` → `git push`** し、ホスティング先へデプロイして本番に反映する。
+2. 生成した JSON を **`/kaihatsu`**（パスワード入力後）に貼り、「検証する」で形式を確認する。
+3. 「**本番に保存する**」で Upstash Redis に保存する（トップページ・診断は数秒以内に反映されます）。
+4. 削除は **`/kaihatsu` の一覧**から行うか、必要なら同じキー（`source` + `date`）を上書き保存する。
 
 詳細なスキーマとトークン抽出の注意は `PDF_TO_JSON_PROMPT.md` を参照してください。
 
@@ -67,7 +82,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 3. **Project Name** を **`taitolabo`** に設定する（初回のみ。空きがなければ別名にするか、チーム・スペル違いを検討する）。
 4. **Framework Preset** は **Next.js** のまま **Deploy** する。完了後の本番URLは `https://taitolabo.vercel.app` になる。
 5. 既に別名でデプロイ済みの場合は、ダッシュボードの **Settings → General → Project Name** を `taitolabo` に変更できる（未使用名のときのみ）。
-6. **`data/` 以下**はリポジトリに含まれていればビルドに同梱され、ランキング JSON も本番で読み込めます。
+6. **Upstash for Redis** を Vercel に接続し、`KV_REST_API_URL` / `KV_REST_API_TOKEN` などが本番・プレビュー環境に設定されていることを確認してください。
 7. （任意）**Settings → Environment Variables** に `ANTHROPIC_API_KEY` を設定すると、本番でも AI 寸評が有効になります。未設定なら寸評はオフです。
 8. `package.json` の `build` / `start` は Next.js 標準のままで問題ありません。
 

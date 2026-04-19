@@ -43,8 +43,8 @@ export function DiagnosePageClient({ hasRankingData }: Props) {
             <Link href="/kaihatsu" className="font-semibold underline decoration-amber-500/60 underline-offset-2 hover:text-amber-50">
               データ取り込み画面
             </Link>
-            で JSON を検証し、<code className="rounded bg-slate-900/80 px-1 text-xs">data/rankings/</code>{" "}
-            に保存してからデプロイしてください。
+            で JSON を検証し、<strong className="text-amber-100/95">本番に保存する</strong>
+            でランキングデータを登録してください。
           </p>
         </div>
       )}

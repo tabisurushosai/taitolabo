@@ -1,4 +1,4 @@
-import { loadAllDatasets, getAllEntries, getAvailableSources } from "@/lib/data";
+import { loadAllDatasets, getAvailableSources } from "@/lib/data";
 import { countTokens, type TokenField } from "@/lib/analyzer";
 import {
   RANKING_SOURCE_LABELS,
@@ -92,8 +92,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const rawSource = firstParam(searchParams.source);
   const rawGenre = firstParam(searchParams.genre);
 
-  const allDatasets = loadAllDatasets();
-  const allEntriesFlat = getAllEntries(allDatasets);
+  const allDatasets = await loadAllDatasets();
+  const allEntriesFlat = allDatasets.flatMap((d) => d.entries);
   const genreOptions = uniqueGenresSorted(allEntriesFlat);
 
   const selectedSource: RankingSource | null =
@@ -110,7 +110,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
 
   const tokensWithCounts = buildTokensWithCounts(entries);
-  const availableSources = getAvailableSources();
+  const availableSources = await getAvailableSources();
   const noDataGlobally = allEntriesFlat.length === 0;
 
   const uniqueWordCount = uniqueTitleAndSynopsisTokenCount(entries);
