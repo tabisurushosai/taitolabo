@@ -17,7 +17,6 @@ export type RankingEntry = {
   rank: number;
   title: string;
   titleTokens: string[]; // 事前抽出：タイトルの名詞・固有語
-  author: string;
   points?: number; // なろう pt or カクヨム ★
   genre: string; // 例: "異世界〔恋愛〕"
   tags: string[]; // ユーザー付与タグ

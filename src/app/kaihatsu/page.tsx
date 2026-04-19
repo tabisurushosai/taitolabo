@@ -23,7 +23,6 @@ const PLACEHOLDER = `{
       "rank": 1,
       "title": "サンプルタイトル",
       "titleTokens": ["サンプル", "タイトル"],
-      "author": "作者名",
       "points": 1234,
       "genre": "異世界〔恋愛〕",
       "tags": ["タグ1", "タグ2"],

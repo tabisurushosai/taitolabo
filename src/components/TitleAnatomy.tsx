@@ -168,9 +168,6 @@ export function TitleAnatomy({
           role="status"
         >
           <p className="text-base font-medium sm:text-lg">データがまだありません</p>
-          <p className="mt-6 max-w-lg text-sm leading-relaxed sm:text-base">
-            データ取り込み（/kaihatsu）でランキングを保存すると、ここに解剖結果が表示されます
-          </p>
         </div>
       ) : (
         <div className="flex min-h-[60vh] w-full flex-col gap-6">

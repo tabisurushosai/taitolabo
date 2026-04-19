@@ -14,11 +14,7 @@ const COMPARE_OPTIONS: Array<{ value: CompareValue; label: string }> = [
   { value: "kakuyomu_weekly_total", label: RANKING_SOURCE_LABELS.kakuyomu_weekly_total },
 ];
 
-type Props = {
-  hasRankingData: boolean;
-};
-
-export function DiagnosePageClient({ hasRankingData }: Props) {
+export function DiagnosePageClient() {
   const [titleInput, setTitleInput] = useState("");
   const [compare, setCompare] = useState<CompareValue>("all");
 
@@ -34,20 +30,6 @@ export function DiagnosePageClient({ hasRankingData }: Props) {
       </div>
 
       <DiagnoseIntro />
-
-      {!hasRankingData && (
-        <div className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-4 text-sm leading-relaxed text-amber-100/95 sm:px-5">
-          <p className="font-medium text-amber-200">ランキングデータがまだありません</p>
-          <p className="mt-2 text-amber-100/80">
-            まず{" "}
-            <Link href="/kaihatsu" className="font-semibold underline decoration-amber-500/60 underline-offset-2 hover:text-amber-50">
-              データ取り込み画面
-            </Link>
-            で JSON を検証し、<strong className="text-amber-100/95">本番に保存する</strong>
-            でランキングデータを登録してください。
-          </p>
-        </div>
-      )}
 
       <form
         onSubmit={(e) => {

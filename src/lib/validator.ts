@@ -71,7 +71,6 @@ export function validateDataset(raw: unknown): { ok: true; data: RankingDataset 
     need("rank", isNumber, "number である必要があります。");
     need("title", isString, "string である必要があります。");
     need("titleTokens", isStringArray, "string[] である必要があります。");
-    need("author", isString, "string である必要があります。");
     need("genre", isString, "string である必要があります。");
     need("tags", isStringArray, "string[] である必要があります。");
     need("synopsisHead", isString, "string である必要があります。");
