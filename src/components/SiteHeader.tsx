@@ -3,15 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV: Array<{
-  href: string;
-  label: string;
-  shortLabel?: string;
-}> = [
+const NAV = [
   { href: "/", label: "タイトラボ" },
   { href: "/diagnose", label: "自分で診断" },
-  { href: "/kaihatsu", label: "データ取り込み", shortLabel: "データ" },
-];
+] as const;
 
 function navLinkClass(active: boolean) {
   return `rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200 sm:px-4 ${
@@ -41,24 +36,10 @@ export function SiteHeader() {
             const active =
               item.href === "/"
                 ? pathname === "/"
-                : item.href === "/kaihatsu"
-                  ? pathname === "/kaihatsu" || pathname.startsWith("/kaihatsu/")
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.shortLabel ? item.label : undefined}
-                className={navLinkClass(active)}
-              >
-                {item.shortLabel ? (
-                  <>
-                    <span className="sm:hidden">{item.shortLabel}</span>
-                    <span className="hidden sm:inline">{item.label}</span>
-                  </>
-                ) : (
-                  item.label
-                )}
+              <Link key={item.href} href={item.href} className={navLinkClass(active)}>
+                {item.label}
               </Link>
             );
           })}
