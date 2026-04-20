@@ -1,0 +1,37 @@
+# 毎週火曜 AM 5:00 JST = UTC 月曜 20:00
+name: Weekly Narou Fetch
+
+on:
+  schedule:
+    - cron: "0 20 * * 1"
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: weekly-fetch
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # fetch-narou は cwd 基準で node_modules/kuromoji/dict を参照（scripts/lib/tokenizer.ts）。Linux でも npm ci 後は同一パスで解決される
+      - name: Verify kuromoji dictionary
+        run: |
+          test -d node_modules/kuromoji/dict
+          test -n "$(ls -A node_modules/kuromoji/dict)"
+          echo "kuromoji dict ok"
+
+      - name: Fetch Narou rankings and push to Redis
+        run: npm run fetch-narou:push
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
