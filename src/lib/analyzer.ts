@@ -1,5 +1,5 @@
 import { RankingEntry } from "./types";
-import { dedupeRankingEntriesByWork } from "./rankingDedupe";
+import { computeEntryFinalWorkRootIndices } from "./rankingDedupe";
 import {
   filterByMinOccurrence,
   filterTokens,
@@ -18,16 +18,24 @@ export function getFieldTokens(entry: RankingEntry, field: TokenField): string[]
 
 /** 各トークンが dedupe 後に何作品に現れるか（タイトラボの含有作品数と同じ基準） */
 export function countTokenWorksDeduped(entries: RankingEntry[], field: TokenField): Map<string, number> {
-  const uniqueTokens = new Set<string>();
-  for (const e of entries) {
-    for (const t of getFieldTokens(e, field)) {
-      uniqueTokens.add(t);
+  if (entries.length === 0) return new Map();
+  const workRoots = computeEntryFinalWorkRootIndices(entries);
+  const tokenToWorkIds = new Map<string, Set<string>>();
+  for (let i = 0; i < entries.length; i += 1) {
+    const wid = workRoots[i];
+    const uniq = new Set(getFieldTokens(entries[i], field));
+    for (const t of uniq) {
+      let s = tokenToWorkIds.get(t);
+      if (s === undefined) {
+        s = new Set();
+        tokenToWorkIds.set(t, s);
+      }
+      s.add(String(wid));
     }
   }
   const map = new Map<string, number>();
-  for (const token of uniqueTokens) {
-    const matched = entries.filter((e) => getFieldTokens(e, field).includes(token));
-    map.set(token, dedupeRankingEntriesByWork(matched).length);
+  for (const [t, s] of tokenToWorkIds) {
+    map.set(t, s.size);
   }
   return map;
 }

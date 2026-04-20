@@ -78,3 +78,97 @@ export function dedupeRankingEntriesByWork(entries: readonly RankingEntry[]): Ra
   const pass1 = dedupeByKey(entries, workIdentityKey);
   return dedupeByKey(pass1, (e) => `t:${normalizeBaseTitle(e.title)}`);
 }
+
+/**
+ * `dedupeRankingEntriesByWork` と同じ同一視で、各エントリが属する「作品」成分の代表インデックス。
+ * O(n α(n))。トークンごとに dedupe を繰り返すより集計に利用する。
+ */
+export function computeEntryFinalWorkRootIndices(entries: readonly RankingEntry[]): Uint32Array {
+  const n = entries.length;
+  const out = new Uint32Array(n);
+  if (n === 0) return out;
+
+  const parent = new Uint32Array(n);
+  const rank = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) parent[i] = i;
+
+  function find(i: number): number {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    let p = i;
+    while (parent[p] !== r) {
+      const nxt = parent[p];
+      parent[p] = r;
+      p = nxt;
+    }
+    return r;
+  }
+
+  function union(a: number, b: number): void {
+    let ra = find(a);
+    let rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) [ra, rb] = [rb, ra];
+    parent[rb] = ra;
+    if (rank[ra] === rank[rb]) rank[ra] += 1;
+  }
+
+  const byWik = new Map<string, number[]>();
+  for (let i = 0; i < n; i += 1) {
+    const k = workIdentityKey(entries[i]);
+    let arr = byWik.get(k);
+    if (arr === undefined) {
+      arr = [];
+      byWik.set(k, arr);
+    }
+    arr.push(i);
+  }
+  for (const arr of byWik.values()) {
+    if (arr.length < 2) continue;
+    for (let j = 1; j < arr.length; j += 1) union(arr[0], arr[j]);
+  }
+
+  const rootToMembers = new Map<number, number[]>();
+  for (let i = 0; i < n; i += 1) {
+    const r = find(i);
+    let members = rootToMembers.get(r);
+    if (members === undefined) {
+      members = [];
+      rootToMembers.set(r, members);
+    }
+    members.push(i);
+  }
+
+  const byNormTitle = new Map<string, number[]>();
+  for (const members of rootToMembers.values()) {
+    let bestIdx = members[0];
+    let best = entries[bestIdx];
+    for (const idx of members) {
+      const e = entries[idx];
+      if (isBetterRank(e, best)) {
+        best = e;
+        bestIdx = idx;
+      }
+    }
+    const tKey = normalizeBaseTitle(entries[bestIdx].title);
+    let roots = byNormTitle.get(tKey);
+    if (roots === undefined) {
+      roots = [];
+      byNormTitle.set(tKey, roots);
+    }
+    roots.push(find(bestIdx));
+  }
+
+  for (const roots of byNormTitle.values()) {
+    if (roots.length < 2) continue;
+    const m0 = rootToMembers.get(roots[0])?.[0];
+    if (m0 === undefined) continue;
+    for (let j = 1; j < roots.length; j += 1) {
+      const mj = rootToMembers.get(roots[j])?.[0];
+      if (mj !== undefined) union(m0, mj);
+    }
+  }
+
+  for (let i = 0; i < n; i += 1) out[i] = find(i);
+  return out;
+}

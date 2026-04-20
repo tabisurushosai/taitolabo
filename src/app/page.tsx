@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { loadAllDatasets, getAvailableSources } from "@/lib/data";
 import { sortGenres } from "@/lib/genreOrder";
 import { sortSources } from "@/lib/sourceOrder";
@@ -25,6 +26,7 @@ import { SimilarityCloudBridgeProvider } from "@/components/SimilarityCloudBridg
 import { UserSearchedTitleProvider } from "@/components/UserSearchedTitleContext";
 import { TitleSimilarityCheck } from "@/components/TitleSimilarityCheck";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
+import Loading from "./loading";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +98,7 @@ function getEntriesWithSources(
   return { entries, entrySources };
 }
 
-export default async function Home({ searchParams }: { searchParams: SearchParamsInput }) {
+async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }) {
   const rawSource = firstParam(searchParams.source);
   const rawGenre = firstParam(searchParams.genre);
 
@@ -202,5 +204,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </SimilarityCloudBridgeProvider>
       )}
     </main>
+  );
+}
+
+export default function Home({ searchParams }: { searchParams: SearchParamsInput }) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <HomeContent searchParams={searchParams} />
+    </Suspense>
   );
 }
