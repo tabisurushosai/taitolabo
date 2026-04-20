@@ -37,7 +37,22 @@ type DatasetSummary = {
   source: RankingSource;
   date: string;
   entriesCount: number;
+  /** サーバーに保存した日時（ISO）。未記録の古いデータは無し */
+  savedAt?: string;
 };
+
+/** 投入日時を日本時間で表示（未記録は —） */
+function formatSavedAtJst(iso: string | undefined): string {
+  if (iso == null || iso === "") return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    dateStyle: "medium",
+    timeStyle: "medium",
+    hour12: false,
+  }).format(d);
+}
 
 export default function KaihatsuPage() {
   const [unlocked, setUnlocked] = useState(false);
@@ -236,7 +251,17 @@ export default function KaihatsuPage() {
       setValidData(null);
       setValidationErrors(null);
       setParseError(null);
-      setToast({ message: "保存しました", variant: "success" });
+      const savedAtMsg =
+        json &&
+        typeof json === "object" &&
+        "savedAt" in json &&
+        typeof (json as { savedAt: unknown }).savedAt === "string"
+          ? formatSavedAtJst((json as { savedAt: string }).savedAt)
+          : null;
+      setToast({
+        message: savedAtMsg ? `保存しました（投入: ${savedAtMsg}）` : "保存しました",
+        variant: "success",
+      });
       await fetchList();
     } catch {
       setToast({ message: "保存失敗: 通信エラー", variant: "error" });
@@ -409,6 +434,9 @@ export default function KaihatsuPage() {
         {/* セクション2: 一覧 */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">投入済みデータセット</h2>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            「ランキング基準日」はデータ内の <code className="rounded bg-slate-800 px-1">date</code> フィールド。「投入日時」は本番に保存した時刻（日本時間表示）です。
+          </p>
 
           {listLoading ? (
             <p className="mt-6 text-sm text-slate-500">読み込み中…</p>
@@ -416,11 +444,12 @@ export default function KaihatsuPage() {
             <p className="mt-6 text-sm text-slate-500">まだデータがありません。</p>
           ) : (
             <div className="mt-6 overflow-x-auto">
-              <table className="w-full min-w-[480px] text-left text-sm">
+              <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 text-xs text-slate-500">
                     <th className="py-3 pr-4 font-medium">ソース</th>
-                    <th className="py-3 pr-4 font-medium">日付</th>
+                    <th className="py-3 pr-4 font-medium">ランキング基準日</th>
+                    <th className="py-3 pr-4 font-medium">投入日時（JST）</th>
                     <th className="py-3 pr-4 font-medium">件数</th>
                     <th className="py-3 text-right font-medium">操作</th>
                   </tr>
@@ -432,6 +461,7 @@ export default function KaihatsuPage() {
                       <tr key={delKey} className="border-b border-slate-800/80">
                         <td className="py-3 pr-4 text-slate-200">{RANKING_SOURCE_LABELS[row.source]}</td>
                         <td className="py-3 pr-4 tabular-nums text-slate-300">{row.date}</td>
+                        <td className="py-3 pr-4 tabular-nums text-slate-400">{formatSavedAtJst(row.savedAt)}</td>
                         <td className="py-3 pr-4 tabular-nums text-slate-400">{row.entriesCount}</td>
                         <td className="py-3 text-right">
                           <button

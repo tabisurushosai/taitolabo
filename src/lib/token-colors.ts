@@ -1,5 +1,22 @@
 import type { TokenField } from "@/lib/analyzer";
 
+/**
+ * トークンクラウド用：最頻出を基準に不透明度だけを変える（常時アニメーションは使わない）。
+ * opacity = 0.35 + 0.65 * (count / maxCount)
+ */
+export function opacityForTokenCloud(count: number, maxCount: number): number {
+  if (maxCount <= 0) return 1;
+  const r = Math.max(0, Math.min(1, count / maxCount));
+  return 0.35 + 0.65 * r;
+}
+
+/** クラウド上のベース色（頻度は opacityForTokenCloud 側で表現） */
+export function hslBaseForTokenCloud(field: TokenField): string {
+  if (field === "titleTokens") return "hsl(38, 82%, 58%)";
+  if (field === "synopsisTokens") return "hsl(188, 78%, 56%)";
+  return "hsl(350, 78%, 60%)";
+}
+
 /** フィールドと頻度で HSL を生成（頻度が高いほど濃く鮮やかに） */
 export function hslForTokenField(
   field: TokenField,

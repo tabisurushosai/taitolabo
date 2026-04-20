@@ -11,13 +11,47 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { TitleLengthScatter } from "@/components/TitleLengthScatter";
+import { TitleLengthStats } from "@/components/TitleLengthStats";
+import { useUserSearchedTitle } from "@/components/UserSearchedTitleContext";
+import { titleCharCount } from "@/lib/titleLength";
 import type { RankingEntry, RankingSource } from "@/lib/types";
+import { genreSliceColor } from "@/lib/genreChartColors";
+import { shortenGenreLabel, sortGenres } from "@/lib/genreOrder";
 
-const GENRE_COLORS = ["#fbbf24", "#fb7185", "#22d3ee", "#a78bfa", "#34d399", "#f472b6", "#2dd4bf", "#c4b5fd"];
+/** ダーク背景のツールチップ用（デフォルトの黒文字を避ける） */
+const chartTooltipProps = {
+  contentStyle: {
+    backgroundColor: "rgb(15 23 42 / 0.95)",
+    border: "1px solid rgb(51 65 85)",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#e2e8f0",
+  },
+  itemStyle: { color: "#e2e8f0" },
+  labelStyle: { color: "#cbd5e1" },
+} as const;
+
+/** ホバー時は扇をわずかに太らせるだけ。SVG テキストは出さない。 */
+function genrePieActiveShape(props: unknown) {
+  const p = props as Record<string, unknown>;
+  const outer = p.outerRadius;
+  const outerRadius =
+    typeof outer === "number" && !Number.isNaN(outer) ? outer + 3 : outer;
+  return (
+    <Sector
+      {...(props as object)}
+      outerRadius={outerRadius as number}
+      stroke="rgb(148 163 184 / 0.65)"
+      strokeWidth={2}
+    />
+  );
+}
 
 const cardMotion = {
   initial: { opacity: 0, y: 30 },
@@ -32,6 +66,18 @@ function isNarouSource(s: RankingSource): boolean {
 
 function isKakuyomuSource(s: RankingSource): boolean {
   return s.startsWith("kakuyomu_");
+}
+
+/** ランキングソース名の期間部分（ジャンル・サイトを区別しない） */
+function periodFromSource(s: RankingSource): "daily" | "weekly" | "monthly" | null {
+  if (s.includes("_daily_")) return "daily";
+  if (s.includes("_weekly_")) return "weekly";
+  if (s.includes("_monthly_")) return "monthly";
+  return null;
+}
+
+function hasAnyKakuyomuEntry(entrySources: RankingSource[]): boolean {
+  return entrySources.some((src) => isKakuyomuSource(src));
 }
 
 function avgPoints(list: RankingEntry[]): number {
@@ -55,12 +101,10 @@ export type DataChartsProps = {
   entrySources: RankingSource[];
 };
 
+/** `entries` / `entrySources` は page のソース・ジャンルフィルタ済み（FilterBar と同一） */
 export function DataChartsSection({ entries, entrySources }: DataChartsProps) {
-  if (entries.length === 0) {
-    return null;
-  }
   return (
-    <section className="mx-auto max-w-6xl px-6 py-16">
+    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
       <motion.h2
         className="mb-8 text-2xl font-bold text-slate-100"
         initial={{ opacity: 0, y: 20 }}
@@ -76,14 +120,20 @@ export function DataChartsSection({ entries, entrySources }: DataChartsProps) {
 }
 
 export function DataCharts({ entries, entrySources }: DataChartsProps) {
+  const searched = useUserSearchedTitle();
+  const highlightLength = useMemo(() => {
+    const t = searched?.userTitle;
+    if (!t || t.trim() === "") return undefined;
+    return titleCharCount(t);
+  }, [searched?.userTitle]);
+
   const genreData = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of entries) {
       m.set(e.genre, (m.get(e.genre) ?? 0) + 1);
     }
-    return Array.from(m.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    const names = sortGenres(Array.from(m.keys()));
+    return names.map((name) => ({ name, value: m.get(name)! }));
   }, [entries]);
 
   const sourceCompareRows = useMemo(() => {
@@ -114,6 +164,27 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
     ];
   }, [entries, entrySources]);
 
+  const periodAvgRows = useMemo(() => {
+    const daily: RankingEntry[] = [];
+    const weekly: RankingEntry[] = [];
+    const monthly: RankingEntry[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const src = entrySources[i];
+      if (!src) continue;
+      const p = periodFromSource(src);
+      if (p === "daily") daily.push(entries[i]);
+      else if (p === "weekly") weekly.push(entries[i]);
+      else if (p === "monthly") monthly.push(entries[i]);
+    }
+    return [
+      { period: "日間", avg: Math.round(avgPoints(daily)) },
+      { period: "週間", avg: Math.round(avgPoints(weekly)) },
+      { period: "月間", avg: Math.round(avgPoints(monthly)) },
+    ];
+  }, [entries, entrySources]);
+
+  const showKakuyomuCompare = hasAnyKakuyomuEntry(entrySources);
+
   const tagTop10 = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of entries) {
@@ -132,14 +203,32 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
   const total = entries.length;
 
   if (entries.length === 0) {
-    return null;
+    return (
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <motion.div
+          {...cardMotion}
+          className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 md:col-span-3"
+        >
+          <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
+          <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
+            <div className="min-w-0 w-full lg:w-[70%]">
+              <TitleLengthScatter entries={[]} highlightLength={highlightLength} />
+            </div>
+            <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
+              <TitleLengthStats entries={[]} />
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
   }
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
       <motion.div
         {...cardMotion}
-        className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"
+        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
       >
         <h3 className="mb-4 text-sm text-slate-400">ジャンル分布</h3>
         <div className="relative mx-auto h-[260px] w-full max-w-[280px]">
@@ -155,20 +244,32 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
                 outerRadius={88}
                 paddingAngle={1}
                 isAnimationActive
+                label={false}
+                labelLine={false}
+                activeShape={genrePieActiveShape}
               >
-                {genreData.map((_, i) => (
-                  <Cell key={i} fill={GENRE_COLORS[i % GENRE_COLORS.length]} />
+                {genreData.map((row) => (
+                  <Cell key={row.name} fill={genreSliceColor(row.name)} />
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgb(15 23 42 / 0.95)",
-                  border: "1px solid rgb(51 65 85)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
+                {...chartTooltipProps}
+                cursor={false}
+                shared={false}
+                allowEscapeViewBox={{ x: true, y: true }}
+                offset={16}
+                wrapperStyle={{
+                  outline: "none",
+                  pointerEvents: "none",
                 }}
               />
-              <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: 11 }} />
+              <Legend
+                layout="horizontal"
+                verticalAlign="bottom"
+                align="center"
+                wrapperStyle={{ fontSize: 11, maxWidth: "100%" }}
+                formatter={(value) => shortenGenreLabel(String(value))}
+              />
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center pb-8">
@@ -182,39 +283,18 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
 
       <motion.div
         {...cardMotion}
-        className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"
+        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
       >
-        <h3 className="mb-4 text-sm text-slate-400">ソース別比較（なろう / カクヨム）</h3>
-        <div className="h-[260px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              layout="vertical"
-              data={sourceCompareRows}
-              margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
-              barCategoryGap={12}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgb(51 65 85 / 0.5)" horizontal={false} />
-              <XAxis type="number" stroke="#94a3b8" fontSize={11} />
-              <YAxis type="category" dataKey="metric" width={72} stroke="#94a3b8" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgb(15 23 42 / 0.95)",
-                  border: "1px solid rgb(51 65 85)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="narou" name="なろう" fill="#fbbf24" radius={[0, 4, 4, 0]} isAnimationActive />
-              <Bar dataKey="kakuyomu" name="カクヨム" fill="#22d3ee" radius={[0, 4, 4, 0]} isAnimationActive />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {showKakuyomuCompare ? (
+          <KakuyomuNarouCompareChart rows={sourceCompareRows} />
+        ) : (
+          <PeriodAveragePointsChart rows={periodAvgRows} />
+        )}
       </motion.div>
 
       <motion.div
         {...cardMotion}
-        className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"
+        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
       >
         <h3 className="mb-4 text-sm text-slate-400">頻出タグ TOP10</h3>
         <div className="h-[260px] w-full">
@@ -241,19 +321,93 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
                 fontSize={10}
                 tickFormatter={(v) => (String(v).length > 10 ? `${String(v).slice(0, 9)}…` : String(v))}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgb(15 23 42 / 0.95)",
-                  border: "1px solid rgb(51 65 85)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
+              <Tooltip {...chartTooltipProps} />
               <Bar dataKey="count" fill="url(#tagRoseGrad)" radius={[0, 4, 4, 0]} isAnimationActive />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </motion.div>
+
+      <motion.div
+        {...cardMotion}
+        className="overflow-x-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 md:col-span-3"
+      >
+        <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
+        <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
+          <div className="min-w-0 w-full lg:w-[70%]">
+            <TitleLengthScatter entries={entries} highlightLength={highlightLength} />
+          </div>
+          <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
+            <TitleLengthStats entries={entries} />
+          </div>
+        </div>
+      </motion.div>
     </div>
+  );
+}
+
+/** カクヨムデータ投入時に再表示する（サイト横比較） */
+function KakuyomuNarouCompareChart({
+  rows,
+}: {
+  rows: Array<{ metric: string; narou: number; kakuyomu: number }>;
+}) {
+  return (
+    <>
+      <h3 className="mb-4 text-sm text-slate-400">ソース別比較（なろう / カクヨム）</h3>
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            layout="vertical"
+            data={rows}
+            margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
+            barCategoryGap={12}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="rgb(51 65 85 / 0.5)" horizontal={false} />
+            <XAxis type="number" stroke="#94a3b8" fontSize={11} />
+            <YAxis type="category" dataKey="metric" width={72} stroke="#94a3b8" fontSize={11} />
+            <Tooltip {...chartTooltipProps} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="narou" name="なろう" fill="#fbbf24" radius={[0, 4, 4, 0]} isAnimationActive />
+            <Bar dataKey="kakuyomu" name="カクヨム" fill="#22d3ee" radius={[0, 4, 4, 0]} isAnimationActive />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+}
+
+/** カクヨム未投入時：期間（日/週/月）別の平均ポイント */
+function PeriodAveragePointsChart({ rows }: { rows: Array<{ period: string; avg: number }> }) {
+  return (
+    <>
+      <h3 className="mb-4 text-sm text-slate-400">期間別の平均pt</h3>
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={rows}
+            margin={{ top: 8, right: 12, left: 4, bottom: 4 }}
+            barCategoryGap="20%"
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="rgb(51 65 85 / 0.5)" vertical={false} />
+            <XAxis dataKey="period" stroke="#94a3b8" fontSize={11} tickLine={false} />
+            <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => String(v)} width={44} />
+            <Tooltip
+              {...chartTooltipProps}
+              formatter={(value: number) => [`${value} pt`, "平均"]}
+            />
+            <Bar
+              dataKey="avg"
+              name="平均pt"
+              fill="#fbbf24"
+              radius={[4, 4, 0, 0]}
+              maxBarSize={56}
+              isAnimationActive
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </>
   );
 }

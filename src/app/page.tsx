@@ -1,5 +1,16 @@
 import { loadAllDatasets, getAvailableSources } from "@/lib/data";
-import { countTokens, type TokenField } from "@/lib/analyzer";
+import { sortGenres } from "@/lib/genreOrder";
+import { sortSources } from "@/lib/sourceOrder";
+import { countTokenWorksDeduped, type TokenField } from "@/lib/analyzer";
+import { computeHeroKpis } from "@/lib/homeKpi";
+import {
+  filterByMinOccurrence,
+  limitDisplayTokens,
+  MIN_TAG_OCCURRENCE,
+  MIN_TOKEN_OCCURRENCE,
+  MIN_WORKS_WITH_TOKEN,
+  type TokenCountPair,
+} from "@/lib/tokenFilter";
 import {
   RANKING_SOURCE_LABELS,
   type RankingDataset,
@@ -10,28 +21,49 @@ import { DataChartsSection } from "@/components/DataCharts";
 import { EmptyLabInvitationCard } from "@/components/EmptyLabInvitationCard";
 import { FilterBarWithRouter } from "@/components/FilterBar";
 import { HomeHero } from "@/components/HomeHero";
+import { SimilarityCloudBridgeProvider } from "@/components/SimilarityCloudBridge";
+import { UserSearchedTitleProvider } from "@/components/UserSearchedTitleContext";
+import { TitleSimilarityCheck } from "@/components/TitleSimilarityCheck";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
 
 export const dynamic = "force-dynamic";
 
-function buildTokensWithCounts(entries: RankingEntry[]): Array<{
-  token: string;
-  count: number;
-  field: TokenField;
-}> {
-  const out: Array<{ token: string; count: number; field: TokenField }> = [];
+function mapToTokenCountPairs(map: Map<string, number>): TokenCountPair[] {
+  return Array.from(map.entries()).map(([token, count]) => ({ token, count }));
+}
 
-  const pushField = (map: Map<string, number>, field: TokenField) => {
-    for (const [token, count] of Array.from(map.entries())) {
-      out.push({ token, count, field });
-    }
+function buildTokensWithCounts(entries: RankingEntry[]): {
+  tokensWithCounts: Array<{ token: string; count: number; field: TokenField }>;
+  displayOmittedByField: Record<TokenField, number>;
+} {
+  const titleLimited = limitDisplayTokens(
+    mapToTokenCountPairs(
+      filterByMinOccurrence(countTokenWorksDeduped(entries, "titleTokens"), MIN_WORKS_WITH_TOKEN)
+    )
+  );
+  const synopsisLimited = limitDisplayTokens(
+    mapToTokenCountPairs(
+      filterByMinOccurrence(countTokenWorksDeduped(entries, "synopsisTokens"), MIN_WORKS_WITH_TOKEN)
+    )
+  );
+  const tagsLimited = limitDisplayTokens(
+    mapToTokenCountPairs(filterByMinOccurrence(countTokenWorksDeduped(entries, "tags"), MIN_WORKS_WITH_TOKEN))
+  );
+
+  const tokensWithCounts = [
+    ...titleLimited.displayed.map((r) => ({ ...r, field: "titleTokens" as const })),
+    ...synopsisLimited.displayed.map((r) => ({ ...r, field: "synopsisTokens" as const })),
+    ...tagsLimited.displayed.map((r) => ({ ...r, field: "tags" as const })),
+  ];
+
+  return {
+    tokensWithCounts,
+    displayOmittedByField: {
+      titleTokens: titleLimited.omitted,
+      synopsisTokens: synopsisLimited.omitted,
+      tags: tagsLimited.omitted,
+    },
   };
-
-  pushField(countTokens(entries, "titleTokens"), "titleTokens");
-  pushField(countTokens(entries, "synopsisTokens"), "synopsisTokens");
-  pushField(countTokens(entries, "tags"), "tags");
-
-  return out;
 }
 
 function firstParam(v: string | string[] | undefined): string | undefined {
@@ -41,30 +73,6 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 
 function isRankingSource(s: string): s is RankingSource {
   return Object.prototype.hasOwnProperty.call(RANKING_SOURCE_LABELS, s);
-}
-
-function uniqueGenresSorted(entries: RankingEntry[]): string[] {
-  return Array.from(new Set(entries.map((e) => e.genre))).sort((a, b) =>
-    a.localeCompare(b, "ja")
-  );
-}
-
-/** titleTokens と synopsisTokens を合わせたユニーク語数 */
-function uniqueTitleAndSynopsisTokenCount(entries: RankingEntry[]): number {
-  const s = new Set<string>();
-  for (const e of entries) {
-    for (const t of e.titleTokens) s.add(t);
-    for (const t of e.synopsisTokens) s.add(t);
-  }
-  return s.size;
-}
-
-function uniqueTagTokenCount(entries: RankingEntry[]): number {
-  const s = new Set<string>();
-  for (const e of entries) {
-    for (const t of e.tags) s.add(t);
-  }
-  return s.size;
 }
 
 type SearchParamsInput = {
@@ -94,7 +102,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const allDatasets = await loadAllDatasets();
   const allEntriesFlat = allDatasets.flatMap((d) => d.entries);
-  const genreOptions = uniqueGenresSorted(allEntriesFlat);
+  const genreOptions = sortGenres(Array.from(new Set(allEntriesFlat.map((e) => e.genre))));
 
   const selectedSource: RankingSource | null =
     rawSource !== undefined && isRankingSource(rawSource) ? rawSource : null;
@@ -109,61 +117,89 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
 
-  const tokensWithCounts = buildTokensWithCounts(entries);
-  const availableSources = await getAvailableSources();
+  const { tokensWithCounts, displayOmittedByField } = buildTokensWithCounts(entries);
+  const availableSources = sortSources(await getAvailableSources());
   const noDataGlobally = allEntriesFlat.length === 0;
 
-  const uniqueWordCount = uniqueTitleAndSynopsisTokenCount(entries);
-  const uniqueTagCount = uniqueTagTokenCount(entries);
+  const heroKpis = computeHeroKpis(entries);
 
   const hasEntries = entries.length > 0;
+
+  const wordKpiTooltip = hasEntries
+    ? `全ユニーク語: ${heroKpis.rawUniqueWordCount}個 / ${MIN_TOKEN_OCCURRENCE}回以上出現: ${heroKpis.uniqueWordCount}個`
+    : undefined;
+  const tagKpiTooltip = hasEntries
+    ? `全タグ: ${heroKpis.rawUniqueTagCount}個 / ${MIN_TAG_OCCURRENCE}回以上出現: ${heroKpis.uniqueTagCount}個`
+    : undefined;
 
   return (
     <main className="min-h-screen">
       <HomeHero
-        titleCount={entries.length}
-        uniqueWordCount={uniqueWordCount}
-        uniqueTagCount={uniqueTagCount}
-        showTokenCloudAnchor={hasEntries}
+        titleCount={heroKpis.titleCount}
+        uniqueWordCount={heroKpis.uniqueWordCount}
+        uniqueTagCount={heroKpis.uniqueTagCount}
+        wordBreakdownTooltip={wordKpiTooltip}
+        tagBreakdownTooltip={tagKpiTooltip}
+        exploreEnabled={!noDataGlobally}
+        hasTokenCloud={hasEntries}
       />
 
       {noDataGlobally && <EmptyLabInvitationCard />}
 
       {!noDataGlobally && (
-        <section className="sticky top-16 z-20 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md">
-          <div className="mx-auto max-w-6xl px-6 py-4">
-            <FilterBarWithRouter
-              sources={availableSources}
-              genres={genreOptions}
-              currentSource={selectedSource}
-              currentGenre={selectedGenre}
-              totalCount={entries.length}
-            />
-          </div>
-        </section>
-      )}
+        <SimilarityCloudBridgeProvider>
+          {/* 類似検索で確定したタイトル（散布図の highlight・サマリ連動）。RSC のため state はクライアント Provider で保持 */}
+          <UserSearchedTitleProvider>
+            <section
+              id="filter-bar"
+              className="scroll-mt-28 border-b border-slate-800 bg-slate-900/50 sm:scroll-mt-32"
+            >
+              <div className="mx-auto max-w-6xl px-3 py-3 sm:px-6 sm:py-5">
+                <FilterBarWithRouter
+                  sources={availableSources}
+                  genres={genreOptions}
+                  currentSource={selectedSource}
+                  currentGenre={selectedGenre}
+                  totalCount={entries.length}
+                />
+              </div>
+            </section>
 
-      {!noDataGlobally && !hasEntries && (
-        <p className="mx-auto max-w-6xl px-6 py-16 text-center text-sm text-slate-500">
-          条件に一致するタイトルがありません。フィルタを調整してください。
-        </p>
-      )}
+            {!hasEntries && (
+              <p className="mx-auto max-w-6xl px-6 py-16 text-center text-sm text-slate-500">
+                条件に一致するタイトルがありません。フィルタを調整してください。
+              </p>
+            )}
 
-      {hasEntries && (
-        <>
-          <div id="token-cloud" className="scroll-mt-28 p-4 sm:scroll-mt-32 sm:p-8">
-            <TitleAnatomy
-              tokensWithCounts={tokensWithCounts}
-              totalEntries={entries.length}
-              entries={entries}
-              corpusIsEmpty={noDataGlobally}
-              selectedSource={selectedSource}
-              selectedGenre={selectedGenre}
-            />
-          </div>
+            {hasEntries && (
+              <div
+                id="token-cloud"
+                className="scroll-mt-28 overflow-x-hidden px-3 py-8 sm:scroll-mt-32 sm:p-8 sm:py-10"
+              >
+                <TitleAnatomy
+                  tokensWithCounts={tokensWithCounts}
+                  displayOmittedByField={displayOmittedByField}
+                  entries={entries}
+                  corpusIsEmpty={noDataGlobally}
+                  selectedSource={selectedSource}
+                  selectedGenre={selectedGenre}
+                />
+              </div>
+            )}
 
-          <DataChartsSection entries={entries} entrySources={entrySources} />
-        </>
+            <section
+              id="similarity-check"
+              className="relative z-20 scroll-mt-28 border-b border-slate-800 bg-slate-950/70 pointer-events-auto sm:scroll-mt-32"
+            >
+              <div className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-8">
+                <TitleSimilarityCheck />
+              </div>
+            </section>
+
+            {/* entries / entrySources は getEntriesWithSources（ジャンル）＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一の配列 */}
+            <DataChartsSection entries={entries} entrySources={entrySources} />
+          </UserSearchedTitleProvider>
+        </SimilarityCloudBridgeProvider>
       )}
     </main>
   );

@@ -12,6 +12,19 @@ export async function listDatasetKeys(): Promise<string[]> {
   return keys as string[];
 }
 
+/** Redis のデータセットキー（例: ranking:narou_daily_total:2026-04-19）から1件取得 */
+export async function getDataset(redisKey: string): Promise<RankingDataset | null> {
+  try {
+    const r = await getRedis().get<RankingDataset>(redisKey);
+    if (r == null || typeof r !== "object" || !Array.isArray((r as RankingDataset).entries)) {
+      return null;
+    }
+    return r as RankingDataset;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadAllDatasets(): Promise<RankingDataset[]> {
   const keys = await listDatasetKeys();
   if (keys.length === 0) return [];
@@ -32,10 +45,19 @@ export async function loadLatestBySource(source: RankingSource): Promise<Ranking
   return list.sort((a, b) => b.date.localeCompare(a.date))[0];
 }
 
-export async function saveDataset(dataset: RankingDataset): Promise<void> {
+/** 保存した日時（ISO 8601 UTC）を返す */
+export async function saveDataset(dataset: RankingDataset): Promise<string> {
   const key = datasetKey(dataset.source, dataset.date);
-  await getRedis().set(key, dataset);
+  const savedAt = new Date().toISOString();
+  const payload: RankingDataset = {
+    source: dataset.source,
+    date: dataset.date,
+    entries: dataset.entries,
+    savedAt,
+  };
+  await getRedis().set(key, payload);
   await getRedis().sadd(INDEX_KEY, key);
+  return savedAt;
 }
 
 export async function deleteDataset(source: RankingSource, date: string): Promise<void> {

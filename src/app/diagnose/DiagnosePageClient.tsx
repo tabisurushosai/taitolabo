@@ -10,10 +10,10 @@ type CompareValue = "all" | RankingSource;
 
 const COMPARE_OPTIONS: Array<{ value: CompareValue; label: string }> = [
   { value: "all", label: "全データ" },
-  { value: "narou_daily_total", label: RANKING_SOURCE_LABELS.narou_daily_total },
-  { value: "narou_weekly_total", label: RANKING_SOURCE_LABELS.narou_weekly_total },
-  { value: "kakuyomu_daily_total", label: RANKING_SOURCE_LABELS.kakuyomu_daily_total },
-  { value: "kakuyomu_weekly_total", label: RANKING_SOURCE_LABELS.kakuyomu_weekly_total },
+  ...(Object.entries(RANKING_SOURCE_LABELS) as [RankingSource, string][]).map(([value, label]) => ({
+    value,
+    label,
+  })),
 ];
 
 export function DiagnosePageClient() {

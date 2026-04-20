@@ -23,12 +23,8 @@ jobs:
 
       - run: npm ci
 
-      # fetch-narou は cwd 基準で node_modules/kuromoji/dict を参照（scripts/lib/tokenizer.ts）。Linux でも npm ci 後は同一パスで解決される
-      - name: Verify kuromoji dictionary
-        run: |
-          test -d node_modules/kuromoji/dict
-          test -n "$(ls -A node_modules/kuromoji/dict)"
-          echo "kuromoji dict ok"
+      # 辞書の存在確認は行わない（ホストにより node_modules レイアウトが変わると test -d が偽陰性になるため）。
+      # 欠損時は fetch 内の kuromoji.builder が失敗する。
 
       - name: Fetch Narou rankings and push to Redis
         run: npm run fetch-narou:push

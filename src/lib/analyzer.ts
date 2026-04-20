@@ -1,11 +1,35 @@
 import { RankingEntry } from "./types";
+import { dedupeRankingEntriesByWork } from "./rankingDedupe";
+import {
+  filterByMinOccurrence,
+  filterTokens,
+  MIN_TAG_OCCURRENCE,
+  MIN_TOKEN_OCCURRENCE,
+} from "./tokenFilter";
 
 export type TokenField = "titleTokens" | "synopsisTokens" | "tags";
 
 const TOKEN_FIELDS: readonly TokenField[] = ["titleTokens", "synopsisTokens", "tags"];
 
-function getFieldTokens(entry: RankingEntry, field: TokenField): string[] {
-  return entry[field];
+/** 表示用集計の単一入口（raw の entry[field] はここで filterTokens 済み） */
+export function getFieldTokens(entry: RankingEntry, field: TokenField): string[] {
+  return filterTokens(entry[field]);
+}
+
+/** 各トークンが dedupe 後に何作品に現れるか（タイトラボの含有作品数と同じ基準） */
+export function countTokenWorksDeduped(entries: RankingEntry[], field: TokenField): Map<string, number> {
+  const uniqueTokens = new Set<string>();
+  for (const e of entries) {
+    for (const t of getFieldTokens(e, field)) {
+      uniqueTokens.add(t);
+    }
+  }
+  const map = new Map<string, number>();
+  for (const token of uniqueTokens) {
+    const matched = entries.filter((e) => getFieldTokens(e, field).includes(token));
+    map.set(token, dedupeRankingEntriesByWork(matched).length);
+  }
+  return map;
 }
 
 /** コーパス全体で、あるフィールドに token が出現する回数 */
@@ -222,7 +246,8 @@ export function suggestAdjacentTokens(
   limit: number = 10
 ): Array<{ token: string; count: number }> {
   const normalized = normalizeInput(userInput);
-  const counts = countTokens(entries, field);
+  const min = field === "tags" ? MIN_TAG_OCCURRENCE : MIN_TOKEN_OCCURRENCE;
+  const counts = filterByMinOccurrence(countTokens(entries, field), min);
   const ranked = Array.from(counts.entries())
     .filter(([token]) => token.length >= MIN_MATCH_LEN && !normalized.includes(token))
     .sort((a, b) => {

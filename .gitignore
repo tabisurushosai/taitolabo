@@ -37,3 +37,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# なろう取得スクリプトの出力（.gitkeep のみ追跡）
+scripts/output/narou/*
+!scripts/output/narou/.gitkeep

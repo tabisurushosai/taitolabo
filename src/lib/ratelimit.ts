@@ -9,10 +9,10 @@ export const readLimiter = new Ratelimit({
   prefix: "rl:read",
 });
 
-// 書き込み系（投入・削除）: 1分間にIP毎5回まで
+// 書き込み系（投入・削除）: 1分間にIP毎15回まで
 export const writeLimiter = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(5, "1 m"),
+  limiter: Ratelimit.slidingWindow(15, "1 m"),
   analytics: true,
   prefix: "rl:write",
 });

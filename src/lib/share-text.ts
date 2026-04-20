@@ -63,8 +63,6 @@ export function formatDiagnoseShareText(
 export type TitleAnatomyShareParams = {
   token: string;
   field: TokenField;
-  totalEntries: number;
-  containingCount: number;
   selectedSource: RankingSource | null;
   selectedGenre: string | null;
   coOccurrence: Array<{ token: string; count: number }>;
@@ -84,9 +82,7 @@ export function formatTitleAnatomyTokenShareText(p: TitleAnatomyShareParams): st
 
   const lines: string[] = [];
   lines.push(`🔍 タイトラボ「${p.token}」`);
-  lines.push(
-    `出現: ${scope}${genrePart}（${fieldJa}） TOP${p.totalEntries}中 ${p.containingCount}作`
-  );
+  lines.push(`出現: ${scope}${genrePart}（${fieldJa}）`);
   lines.push(`共起語: ${coPart}`);
 
   return lines.join("\n");

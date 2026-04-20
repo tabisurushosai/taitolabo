@@ -25,7 +25,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "タイトラボ",
-  description: "なろう・カクヨム等のランキングタイトルをトークンで眺め、タイトル案を診断するツール",
+  description: "なろうのランキングタイトルをトークンで眺め、タイトル案を診断するツール",
 };
 
 export default function RootLayout({

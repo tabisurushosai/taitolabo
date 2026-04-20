@@ -1,16 +1,9 @@
-import { type RankingDataset, type RankingSource } from "./types";
-
-const VALID_SOURCES: RankingSource[] = [
-  "narou_daily_total",
-  "narou_weekly_total",
-  "kakuyomu_daily_total",
-  "kakuyomu_weekly_total",
-];
+import { type RankingDataset, type RankingSource, VALID_RANKING_SOURCES } from "./types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRankingSource(s: string): s is RankingSource {
-  return (VALID_SOURCES as readonly string[]).includes(s);
+  return (VALID_RANKING_SOURCES as readonly string[]).includes(s);
 }
 
 function isStringArray(v: unknown): v is string[] {
@@ -37,7 +30,7 @@ export function validateDataset(raw: unknown): { ok: true; data: RankingDataset 
 
   if (!("source" in o)) errors.push("source が必須です。");
   else if (!isString(o.source) || !isRankingSource(o.source)) {
-    errors.push(`source は次のいずれかである必要があります: ${VALID_SOURCES.join(", ")}`);
+    errors.push(`source は次のいずれかである必要があります: ${VALID_RANKING_SOURCES.join(", ")}`);
   }
 
   if (!("date" in o)) errors.push("date が必須です。");
@@ -75,6 +68,13 @@ export function validateDataset(raw: unknown): { ok: true; data: RankingDataset 
     need("synopsisHead", isString, "string である必要があります。");
     need("synopsisTokens", isStringArray, "string[] である必要があります。");
 
+    if ("ncode" in e && e.ncode !== undefined) {
+      if (!isString(e.ncode)) {
+        errors.push(`${p}.ncode: string である必要があります。`);
+      } else if (e.ncode.trim() === "") {
+        errors.push(`${p}.ncode: 空文字は許可されません。省略するか、非空の文字列にしてください。`);
+      }
+    }
     if (e.points !== undefined && !isNumber(e.points)) {
       errors.push(`${p}.points: number である必要があります。`);
     }
@@ -83,6 +83,11 @@ export function validateDataset(raw: unknown): { ok: true; data: RankingDataset 
     }
     if (e.charCount !== undefined && !isNumber(e.charCount)) {
       errors.push(`${p}.charCount: number である必要があります。`);
+    }
+    if (e.titleLength !== undefined) {
+      if (!isNumber(e.titleLength) || !Number.isFinite(e.titleLength) || e.titleLength < 0) {
+        errors.push(`${p}.titleLength: 0 以上の数値である必要があります。`);
+      }
     }
   });
 

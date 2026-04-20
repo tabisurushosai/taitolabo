@@ -24,12 +24,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    await saveDataset(result.data);
+    const savedAt = await saveDataset(result.data);
     return NextResponse.json({
       ok: true,
       source: result.data.source,
       date: result.data.date,
       entriesCount: result.data.entries.length,
+      savedAt,
     });
   } catch (e) {
     console.error("POST /api/rankings error:", e);
@@ -53,6 +54,7 @@ export async function GET(req: NextRequest) {
       source: d.source,
       date: d.date,
       entriesCount: d.entries.length,
+      savedAt: d.savedAt,
     }));
     summary.sort((a, b) => b.date.localeCompare(a.date) || a.source.localeCompare(b.source));
     return NextResponse.json({ datasets: summary });

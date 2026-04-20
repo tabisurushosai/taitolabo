@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { TokenDetailModal } from "@/components/TokenDetailModal";
 import { type RankingEntry, type RankingSource } from "@/lib/types";
 import { formatTitleAnatomyTokenShareText } from "@/lib/share-text";
-import { coOccurringTokens, type TokenField } from "@/lib/analyzer";
-import { hslForTokenField } from "@/lib/token-colors";
+import { coOccurringTokens, getFieldTokens, type TokenField } from "@/lib/analyzer";
+import { hslBaseForTokenCloud, opacityForTokenCloud } from "@/lib/token-colors";
+import { useSimilarityCloudBridge } from "@/components/SimilarityCloudBridge";
+import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
+import { MIN_WORKS_WITH_TOKEN } from "@/lib/tokenFilter";
 
 type Props = {
   tokensWithCounts: Array<{ token: string; count: number; field: TokenField }>;
-  totalEntries: number;
+  /** クラウド表示から省略したトークン数（フィールド別。0 ならメッセージ非表示） */
+  displayOmittedByField: Record<TokenField, number>;
   entries: RankingEntry[];
   /** ランキングコーパスが空のとき true（フィルタで 0 件になった場合は false） */
   corpusIsEmpty: boolean;
@@ -44,35 +48,11 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function countEntriesWithToken(
-  list: RankingEntry[],
-  field: TokenField,
-  token: string
-): number {
-  let n = 0;
-  for (const e of list) {
-    if (e[field].includes(token)) n += 1;
-  }
-  return n;
-}
-
-function topTitlesByRank(
-  list: RankingEntry[],
-  field: TokenField,
-  token: string,
-  limit: number
-): RankingEntry[] {
-  return list
-    .filter((e) => e[field].includes(token))
-    .sort((a, b) => a.rank - b.rank)
-    .slice(0, limit);
-}
-
 type SortMode = "count" | "random";
 
 export function TitleAnatomy({
   tokensWithCounts,
-  totalEntries,
+  displayOmittedByField,
   entries,
   corpusIsEmpty,
   selectedSource,
@@ -82,10 +62,41 @@ export function TitleAnatomy({
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
   const [hoveredToken, setHoveredToken] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("count");
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { cloudMatchTokens } = useSimilarityCloudBridge();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setNarrowViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const cancelHoverLeaveTimer = () => {
+    if (hoverLeaveTimerRef.current !== null) {
+      clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  };
+
+  const scheduleHoverLeave = () => {
+    cancelHoverLeaveTimer();
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      hoverLeaveTimerRef.current = null;
+      setHoveredToken(null);
+    }, 220);
+  };
+
+  useEffect(() => () => cancelHoverLeaveTimer(), []);
 
   const setTab = (id: TabId) => {
     setActiveTab(id);
     setSelectedToken(null);
+    setHoveredToken(null);
+    cancelHoverLeaveTimer();
   };
 
   const filtered = useMemo(() => {
@@ -110,18 +121,12 @@ export function TitleAnatomy({
     return { minCount: minV, maxCount: maxV };
   }, [filtered]);
 
-  const floatDurations = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const row of ordered) {
-      m.set(`${activeTab}:${row.token}`, 3 + Math.random() * 2);
-    }
-    return m;
-  }, [ordered, activeTab]);
+  const detailToken = selectedToken ?? hoveredToken;
 
   const coOccurrenceMap = useMemo(() => {
-    if (!selectedToken) return new Map<string, number>();
-    return coOccurringTokens(entries, activeTab, selectedToken);
-  }, [entries, activeTab, selectedToken]);
+    if (!detailToken) return new Map<string, number>();
+    return coOccurringTokens(entries, activeTab, detailToken);
+  }, [entries, activeTab, detailToken]);
 
   const coOccurrenceTop10 = useMemo(() => {
     return Array.from(coOccurrenceMap.entries())
@@ -130,35 +135,28 @@ export function TitleAnatomy({
   }, [coOccurrenceMap]);
 
   const containingCount = useMemo(() => {
-    if (!selectedToken) return 0;
-    return countEntriesWithToken(entries, activeTab, selectedToken);
-  }, [entries, activeTab, selectedToken]);
+    if (!detailToken) return 0;
+    const matched = entries.filter((e) => getFieldTokens(e, activeTab).includes(detailToken));
+    return dedupeRankingEntriesByWork(matched).length;
+  }, [entries, activeTab, detailToken]);
 
-  const topTitles = useMemo(() => {
-    if (!selectedToken) return [];
-    return topTitlesByRank(entries, activeTab, selectedToken, 3);
-  }, [entries, activeTab, selectedToken]);
+  /** モーダル「出現作品」用：該当トークンを含む作品（同一 ncode/タイトルは1件にまとめる。表示はモーダル側で抽選） */
+  const appearingWorks = useMemo(() => {
+    if (!detailToken) return [];
+    const matched = entries.filter((e) => getFieldTokens(e, activeTab).includes(detailToken));
+    return dedupeRankingEntriesByWork(matched);
+  }, [entries, activeTab, detailToken]);
 
   const tokenShareText = useMemo(() => {
-    if (!selectedToken) return "";
+    if (!detailToken) return "";
     return formatTitleAnatomyTokenShareText({
-      token: selectedToken,
+      token: detailToken,
       field: activeTab,
-      totalEntries,
-      containingCount,
       selectedSource,
       selectedGenre,
       coOccurrence: coOccurrenceTop10.map(([t, c]) => ({ token: t, count: c })),
     });
-  }, [
-    selectedToken,
-    activeTab,
-    totalEntries,
-    containingCount,
-    selectedSource,
-    selectedGenre,
-    coOccurrenceTop10,
-  ]);
+  }, [detailToken, activeTab, selectedSource, selectedGenre, coOccurrenceTop10]);
 
   return (
     <div className="space-y-6">
@@ -170,7 +168,7 @@ export function TitleAnatomy({
           <p className="text-base font-medium sm:text-lg">データがまだありません</p>
         </div>
       ) : (
-        <div className="flex min-h-[60vh] w-full flex-col gap-6">
+        <div className="flex min-h-[60vh] w-full max-w-full flex-col gap-6 overflow-x-hidden">
           <div className="flex min-w-0 w-full flex-col gap-4">
             <div className="flex flex-wrap items-end gap-x-3 gap-y-2 border-b border-slate-800 pb-3">
               <div className="flex flex-wrap gap-2" role="tablist" aria-label="表示フィールド">
@@ -205,7 +203,7 @@ export function TitleAnatomy({
                       : "bg-slate-800/80 text-slate-400 hover:bg-slate-700"
                   }`}
                 >
-                  出現数順
+                  作品数順
                 </button>
                 <button
                   type="button"
@@ -221,14 +219,18 @@ export function TitleAnatomy({
               </div>
             </div>
 
-            <div className="relative min-h-[120px] rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 sm:p-6" role="tabpanel">
+            <div
+              data-token-cloud
+              className="relative min-h-[120px] max-w-full overflow-x-hidden overflow-y-visible rounded-2xl border border-slate-800/80 bg-slate-900/40 p-3 sm:p-6 [contain:layout_style]"
+              role="tabpanel"
+            >
               {ordered.length === 0 ? (
                 <p className="text-sm text-slate-500">このタブに表示するトークンがありません。</p>
               ) : (
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeTab}
-                    className="flex flex-wrap justify-center gap-x-3 gap-y-4"
+                    className="flex max-w-full flex-wrap justify-center gap-x-2 gap-y-3 sm:gap-x-3 sm:gap-y-4"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
@@ -236,66 +238,66 @@ export function TitleAnatomy({
                   >
                     {ordered.map((row, index) => {
                       const isSelected = selectedToken === row.token;
+                      const similarityHighlight =
+                        cloudMatchTokens !== null && cloudMatchTokens.has(row.token);
                       const dimOthersSelected = selectedToken !== null && !isSelected;
                       const dimSiblingsHover =
                         hoveredToken !== null && hoveredToken !== row.token && selectedToken === null;
-                      const opacity = dimOthersSelected ? 0.3 : dimSiblingsHover ? 0.4 : 1;
+                      const interactionDim = dimOthersSelected ? 0.3 : dimSiblingsHover ? 0.4 : 1;
 
-                      const fontSize = fontSizePxSqrt(row.count, minCount, maxCount);
-                      const color = hslForTokenField(activeTab, row.count, minCount, maxCount);
-                      const floatDur = floatDurations.get(`${activeTab}:${row.token}`) ?? 4;
-
-                      let scale = 1;
-                      if (isSelected) scale = 1.3;
-                      else if (hoveredToken === row.token) scale = 1.15;
-
-                      const stagger = index * 0.03;
+                      const rawSize = fontSizePxSqrt(row.count, minCount, maxCount);
+                      const fontSize = narrowViewport ? Math.min(rawSize, 44) : Math.min(rawSize, 56);
+                      const color = hslBaseForTokenCloud(activeTab);
+                      const freqOpacity = opacityForTokenCloud(row.count, maxCount);
+                      const opacity = freqOpacity * interactionDim;
 
                       return (
                         <motion.span
                           key={`${activeTab}-${sortMode}-${row.token}`}
-                          className="inline-block will-change-transform"
+                          className="inline-block"
                           style={{
                             zIndex: isSelected ? 30 : hoveredToken === row.token ? 20 : 1,
                           }}
-                          animate={{
-                            y: [0, 3, 0, -3, 0],
-                          }}
-                          transition={{
-                            y: {
-                              repeat: Infinity,
-                              duration: floatDur,
-                              ease: "easeInOut",
-                            },
-                          }}
+                          animate={reduceMotion ? { y: 0 } : { y: [0, -5, 0] }}
+                          transition={
+                            reduceMotion
+                              ? { duration: 0 }
+                              : {
+                                  y: {
+                                    repeat: Infinity,
+                                    duration: 3.6 + (index % 8) * 0.28,
+                                    ease: "easeInOut",
+                                    delay: (index * 0.11) % 2.6,
+                                  },
+                                }
+                          }
                         >
-                          <motion.button
+                          <button
                             type="button"
-                            initial={{ opacity: 0, scale: 0.5, y: 20 }}
-                            animate={{
-                              opacity,
-                              scale,
-                              y: 0,
+                            onClick={() => {
+                              cancelHoverLeaveTimer();
+                              setSelectedToken(row.token);
                             }}
-                            transition={{
-                              opacity: { duration: 0.4, delay: stagger, ease: "easeOut" },
-                              scale: { duration: 0.4, delay: stagger, ease: "easeOut" },
-                              y: { duration: 0.4, delay: stagger, ease: "easeOut" },
+                            onMouseEnter={() => {
+                              cancelHoverLeaveTimer();
+                              setHoveredToken(row.token);
                             }}
-                            onClick={() => setSelectedToken(row.token)}
-                            onMouseEnter={() => setHoveredToken(row.token)}
-                            onMouseLeave={() => setHoveredToken(null)}
-                            className={`relative cursor-pointer rounded-lg px-2 py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
-                              isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950" : ""
+                            className={`relative max-w-[min(100%,92vw)] cursor-pointer touch-manipulation rounded-lg px-2 py-1.5 text-center font-semibold transition-[color,transform,opacity] duration-150 ease-out hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 sm:px-2 sm:py-1 ${
+                              isSelected
+                                ? "scale-[1.15] ring-2 ring-white ring-offset-2 ring-offset-slate-950"
+                                : similarityHighlight
+                                  ? "ring-2 ring-amber-400/90 ring-offset-2 ring-offset-slate-950 hover:scale-105"
+                                  : "hover:scale-105"
                             }`}
                             style={{
                               fontSize: `${fontSize}px`,
                               color,
+                              opacity,
                             }}
                             title={`${row.token}（${row.count}）`}
                           >
                             {row.token}
-                          </motion.button>
+                          </button>
                         </motion.span>
                       );
                     })}
@@ -303,25 +305,45 @@ export function TitleAnatomy({
                 </AnimatePresence>
               )}
             </div>
+
+            {displayOmittedByField[activeTab] > 0 ? (
+              <p className="text-center text-[11px] leading-relaxed text-slate-600">
+                他 {displayOmittedByField[activeTab]}{" "}
+                語は表示を省略しています（{MIN_WORKS_WITH_TOKEN}
+                件以上の作品に出現）
+              </p>
+            ) : null}
           </div>
 
-          <p className="text-center text-sm text-slate-600">トークンをクリックすると詳細が開きます。</p>
+          <p className="text-center text-sm text-slate-600">
+            カーソルを合わせると詳細が表示されます。クリックで固定（背景が暗くなります）。
+          </p>
         </div>
       )}
 
       <TokenDetailModal
-        isOpen={selectedToken !== null}
-        token={selectedToken ?? ""}
+        isOpen={detailToken !== null}
+        token={detailToken ?? ""}
         field={activeTab}
-        totalEntries={totalEntries}
         containingCount={containingCount}
         minCount={minCount}
         maxCount={maxCount}
         coOccurrenceTop10={coOccurrenceTop10}
-        topTitles={topTitles}
+        appearingWorks={appearingWorks}
         shareText={tokenShareText}
-        onClose={() => setSelectedToken(null)}
-        onSelectToken={setSelectedToken}
+        presentation={selectedToken !== null ? "modal" : "hover"}
+        onHoverPanelPointerEnter={cancelHoverLeaveTimer}
+        onHoverPanelPointerLeave={scheduleHoverLeave}
+        onClose={() => {
+          cancelHoverLeaveTimer();
+          setSelectedToken(null);
+          setHoveredToken(null);
+        }}
+        onSelectToken={(next) => {
+          cancelHoverLeaveTimer();
+          setSelectedToken(next);
+          setHoveredToken(next);
+        }}
       />
     </div>
   );
