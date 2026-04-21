@@ -1,6 +1,66 @@
 import type { RankingEntry } from "./types";
-import { dedupeRankingEntriesByWork } from "./rankingDedupe";
+import { computeEntryFinalWorkRootIndices, dedupeRankingEntriesByWork } from "./rankingDedupe";
 import { isDisplayableToken } from "./tokenFilter";
+
+/** 複数ソースを跨いだ「1 作品」の集約（順位は全行の最小 rank、強さの目安は全行の最大 points） */
+type WorkAggregate = {
+  rep: RankingEntry;
+  minRank: number;
+  maxPoints: number;
+};
+
+function buildWorkAggregates(entries: readonly RankingEntry[]): WorkAggregate[] {
+  const n = entries.length;
+  if (n === 0) return [];
+  const roots = computeEntryFinalWorkRootIndices(entries);
+  const rootToIndices = new Map<number, number[]>();
+  for (let i = 0; i < n; i += 1) {
+    const r = roots[i];
+    let arr = rootToIndices.get(r);
+    if (arr === undefined) {
+      arr = [];
+      rootToIndices.set(r, arr);
+    }
+    arr.push(i);
+  }
+
+  const out: WorkAggregate[] = [];
+  for (const indices of rootToIndices.values()) {
+    const rows = indices.map((i) => entries[i]);
+    let minRank = Infinity;
+    let maxPoints = -Infinity;
+    for (const e of rows) {
+      if (e.rank < minRank) minRank = e.rank;
+      if (typeof e.points === "number" && !Number.isNaN(e.points)) {
+        if (e.points > maxPoints) maxPoints = e.points;
+      }
+    }
+    if (minRank === Infinity) minRank = 999;
+    if (maxPoints === -Infinity) maxPoints = 0;
+
+    const atMinRank = rows.filter((e) => e.rank === minRank);
+    const candidates = atMinRank.length > 0 ? atMinRank : rows;
+    let rep = candidates[0]!;
+    let repPts = typeof rep.points === "number" && !Number.isNaN(rep.points) ? rep.points : -Infinity;
+    for (const e of candidates) {
+      const ep = typeof e.points === "number" && !Number.isNaN(e.points) ? e.points : -Infinity;
+      if (ep > repPts) {
+        rep = e;
+        repPts = ep;
+      } else if (ep === repPts && e.title.localeCompare(rep.title, "ja") < 0) {
+        rep = e;
+      }
+    }
+    out.push({ rep, minRank, maxPoints });
+  }
+  return out;
+}
+
+function compareWorkAggregates(a: WorkAggregate, b: WorkAggregate): number {
+  if (a.minRank !== b.minRank) return a.minRank - b.minRank;
+  if (b.maxPoints !== a.maxPoints) return b.maxPoints - a.maxPoints;
+  return a.rep.title.localeCompare(b.rep.title, "ja");
+}
 
 export type GenreProfile = {
   targetCount: number;
@@ -62,9 +122,13 @@ function sortedTopCounts(map: Map<string, number>, n: number): { name: string; c
 /**
  * ジャンル（または任意のエントリ集合）の上位ランク帯の特徴を集計する。I/O なし。
  *
- * rank 昇順で先頭 `topRank` 件に絞った集合について、トークン・タグ TOP5・平均タイトル長を算出する。
- * - `avgPoints` … 入力 `entries` を作品単位にまとめたうえでの平均ポイント
- * - `topRangeAvgPoints` … 順位の上位 `topRank` **作品**のみの平均ポイント
+ * 「上位 N 作品」は `computeEntryFinalWorkRootIndices` と同一の作品単位でまとめたうえで、
+ * 各作品の **全ソース中の最良 rank（最小）** を第一キー、**全行の最大 points** を第二キー（降順）に
+ * ソートし、先頭 `topRank` 件の**代表行**（最良 rank 行のうち points 最大）からトークン・タグを集計する。
+ * ソースごとの rank=1 が複数あっても、上記キーで並んだ先頭 N 件だけが対象になる。
+ *
+ * - `avgPoints` … 入力 `entries` を `dedupeRankingEntriesByWork` した 1 行／作品の平均ポイント
+ * - `topRangeAvgPoints` … 上記「上位 N 作品」代表行の平均ポイント
  *
  * points 未定義は分母から除外する。
  */
@@ -75,12 +139,9 @@ export function computeGenreProfile(
   assertTopRank(topRank);
 
   const byWork = dedupeRankingEntriesByWork(entries);
-  const sorted = [...byWork].sort((a, b) => {
-    if (a.rank !== b.rank) return a.rank - b.rank;
-    return a.title.localeCompare(b.title, "ja");
-  });
-
-  const topSlice = sorted.slice(0, topRank);
+  const aggs = buildWorkAggregates(entries);
+  const sortedAggs = [...aggs].sort(compareWorkAggregates);
+  const topSlice = sortedAggs.slice(0, topRank).map((a) => a.rep);
   const targetCount = topSlice.length;
 
   const tokenCounts = new Map<string, number>();
