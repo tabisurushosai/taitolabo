@@ -4,6 +4,9 @@ import { isDisplayableToken } from "@/lib/tokenFilter";
 import { isAllowedSimilaritySearchGenre } from "@/lib/similaritySearchGenres";
 import { calculateSimilarity, computeIdf } from "@/lib/similarity";
 import { tokenize } from "@/lib/serverTokenizer";
+import { jsonApiError } from "@/lib/httpApiError";
+import { checkInMemoryIpRateLimit, type IpRateBucket } from "@/lib/inMemoryIpRateLimit";
+import { getClientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +16,6 @@ const CACHE_TTL_MS = 60_000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 30;
 
-type ErrorCode = "INVALID_INPUT" | "RATE_LIMIT" | "INTERNAL_ERROR";
-
-function jsonError(status: number, message: string, code: ErrorCode) {
-  return NextResponse.json({ error: message, code }, { status });
-}
-
 /** 制御文字除去・連続空白圧縮・trim */
 function sanitizeSimilarTitleInput(raw: string): string {
   const noCtrl = raw.replace(/[\x00-\x1F\x7F]/g, "");
@@ -27,38 +24,13 @@ function sanitizeSimilarTitleInput(raw: string): string {
 
 type CacheEntry = { data: Record<string, unknown>; expiresAt: number };
 const responseCache = new Map<string, CacheEntry>();
-
-type RateEntry = { count: number; windowStart: number };
-const rateByIp = new Map<string, RateEntry>();
-
-function clientIp(req: NextRequest): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first && first.length > 0) return first;
-  }
-  return "0.0.0.0";
-}
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  let entry = rateByIp.get(ip);
-  if (!entry || now - entry.windowStart >= RATE_WINDOW_MS) {
-    entry = { count: 0, windowStart: now };
-    rateByIp.set(ip, entry);
-  }
-  if (entry.count >= RATE_MAX) {
-    return false;
-  }
-  entry.count += 1;
-  return true;
-}
+const similarRateByIp = new Map<string, IpRateBucket>();
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = clientIp(req);
-    if (!checkRateLimit(ip)) {
-      return jsonError(
+    const ip = getClientIp(req.headers);
+    if (!checkInMemoryIpRateLimit(similarRateByIp, ip, RATE_MAX, RATE_WINDOW_MS)) {
+      return jsonApiError(
         429,
         "短時間にリクエストが多すぎます。しばらくしてからお試しください。",
         "RATE_LIMIT"
@@ -69,21 +41,21 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return jsonError(400, "JSON の形式が正しくありません。", "INVALID_INPUT");
+      return jsonApiError(400, "JSON の形式が正しくありません。", "INVALID_INPUT");
     }
 
     if (body === null || typeof body !== "object" || Array.isArray(body)) {
-      return jsonError(400, "リクエスト本文が不正です。", "INVALID_INPUT");
+      return jsonApiError(400, "リクエスト本文が不正です。", "INVALID_INPUT");
     }
 
     const rawTitle = (body as Record<string, unknown>).title;
     if (typeof rawTitle !== "string") {
-      return jsonError(400, "タイトルを文字列で指定してください。", "INVALID_INPUT");
+      return jsonApiError(400, "タイトルを文字列で指定してください。", "INVALID_INPUT");
     }
 
     let title = sanitizeSimilarTitleInput(rawTitle);
     if (title.length === 0) {
-      return jsonError(400, "タイトルを入力してください。", "INVALID_INPUT");
+      return jsonApiError(400, "タイトルを入力してください。", "INVALID_INPUT");
     }
     if (title.length > TITLE_MAX) {
       title = title.slice(0, TITLE_MAX);
@@ -93,12 +65,12 @@ export async function POST(req: NextRequest) {
     let genreFilter: string | null = null;
     if (rawGenre !== undefined && rawGenre !== null) {
       if (typeof rawGenre !== "string") {
-        return jsonError(400, "genre は文字列で指定してください。", "INVALID_INPUT");
+        return jsonApiError(400, "genre は文字列で指定してください。", "INVALID_INPUT");
       }
       const g = rawGenre.trim();
       if (g !== "" && g.toLowerCase() !== "all") {
         if (!isAllowedSimilaritySearchGenre(g)) {
-          return jsonError(400, "指定されたジャンルは利用できません。", "INVALID_INPUT");
+          return jsonApiError(400, "指定されたジャンルは利用できません。", "INVALID_INPUT");
         }
         genreFilter = g;
       }
@@ -118,7 +90,11 @@ export async function POST(req: NextRequest) {
       rawTokens = await tokenize(title);
     } catch (e) {
       console.error("[api/similar] tokenize failed (kuromoji dict path / cold start?)", e);
-      return jsonError(500, "内部でエラーが発生しました。時間をおいて再度お試しください。", "INTERNAL_ERROR");
+      return jsonApiError(
+        500,
+        "内部でエラーが発生しました。時間をおいて再度お試しください。",
+        "INTERNAL_ERROR"
+      );
     }
     const tokens = rawTokens.filter(isDisplayableToken);
 
@@ -128,7 +104,11 @@ export async function POST(req: NextRequest) {
       corpus = loaded.corpus;
     } catch (e) {
       console.error("[api/similar] loadCorpusAndIdf failed", e);
-      return jsonError(500, "内部でエラーが発生しました。時間をおいて再度お試しください。", "INTERNAL_ERROR");
+      return jsonApiError(
+        500,
+        "内部でエラーが発生しました。時間をおいて再度お試しください。",
+        "INTERNAL_ERROR"
+      );
     }
 
     const corpusFiltered =
@@ -149,6 +129,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(payload);
   } catch {
-    return jsonError(500, "内部でエラーが発生しました。時間をおいて再度お試しください。", "INTERNAL_ERROR");
+    return jsonApiError(
+      500,
+      "内部でエラーが発生しました。時間をおいて再度お試しください。",
+      "INTERNAL_ERROR"
+    );
   }
 }

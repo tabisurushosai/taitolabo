@@ -8,6 +8,7 @@ import { formatTitleAnatomyTokenShareText } from "@/lib/share-text";
 import { coOccurringTokens, getFieldTokens, type TokenField } from "@/lib/analyzer";
 import { hslBaseForTokenCloud, opacityForTokenCloud } from "@/lib/token-colors";
 import { useSimilarityCloudBridge } from "@/components/SimilarityCloudBridge";
+import { useTitleTokenDetailBridge } from "@/components/TitleTokenDetailBridge";
 import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
 import { MIN_WORKS_WITH_TOKEN } from "@/lib/tokenFilter";
 
@@ -66,6 +67,7 @@ export function TitleAnatomy({
   const reduceMotion = useReducedMotion();
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { cloudMatchTokens } = useSimilarityCloudBridge();
+  const { registerOpenHandler } = useTitleTokenDetailBridge();
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px)");
@@ -89,6 +91,18 @@ export function TitleAnatomy({
       setHoveredToken(null);
     }, 220);
   };
+
+  useEffect(() => {
+    return registerOpenHandler((token: string) => {
+      if (hoverLeaveTimerRef.current !== null) {
+        clearTimeout(hoverLeaveTimerRef.current);
+        hoverLeaveTimerRef.current = null;
+      }
+      setActiveTab("titleTokens");
+      setSelectedToken(token);
+      setHoveredToken(token);
+    });
+  }, [registerOpenHandler]);
 
   useEffect(() => () => cancelHoverLeaveTimer(), []);
 

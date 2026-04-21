@@ -19,6 +19,8 @@ import {
 import { CooccurrenceNetworkSection } from "@/components/CooccurrenceNetworkSection";
 import { TitleLengthScatter } from "@/components/TitleLengthScatter";
 import { TitleLengthStats } from "@/components/TitleLengthStats";
+import { TrendSection } from "@/components/TrendSection";
+import { useOptionalTitleTokenDetailBridge } from "@/components/TitleTokenDetailBridge";
 import { useUserSearchedTitle } from "@/components/UserSearchedTitleContext";
 import { titleCharCount } from "@/lib/titleLength";
 import type { RankingEntry, RankingSource } from "@/lib/types";
@@ -112,7 +114,10 @@ export function DataChartsSection({
   selectedGenre,
 }: DataChartsProps) {
   return (
-    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+    <section
+      id="data-overview"
+      className="mx-auto max-w-6xl scroll-mt-28 px-4 py-12 sm:px-6 sm:py-16 sm:scroll-mt-32"
+    >
       <motion.h2
         className="mb-8 text-2xl font-bold text-slate-100"
         initial={{ opacity: 0, y: 20 }}
@@ -133,6 +138,12 @@ export function DataChartsSection({
 }
 
 export function DataCharts({ entries, entrySources, selectedSource, selectedGenre }: DataChartsProps) {
+  const tokenDetailBridge = useOptionalTitleTokenDetailBridge();
+  const onTrendTokenClick =
+    tokenDetailBridge !== null
+      ? (token: string) => tokenDetailBridge.requestOpenTitleTokenDetail(token)
+      : undefined;
+
   const searched = useUserSearchedTitle();
   const highlightLength = useMemo(() => {
     const t = searched?.userTitle;
@@ -217,7 +228,15 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
 
   if (entries.length === 0) {
     return (
-      <>
+      <div className="space-y-6">
+        <motion.div {...cardMotion}>
+          <TrendSection
+            entries={entries}
+            selectedSource={selectedSource}
+            selectedGenre={selectedGenre}
+            onTokenClick={onTrendTokenClick}
+          />
+        </motion.div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <motion.div
             {...cardMotion}
@@ -240,17 +259,17 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
           selectedSource={selectedSource}
           selectedGenre={selectedGenre}
         />
-      </>
+      </div>
     );
   }
 
   return (
     <>
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-      <motion.div
-        {...cardMotion}
-        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
-      >
+        <motion.div
+          {...cardMotion}
+          className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
+        >
         <h3 className="mb-4 text-sm text-slate-400">ジャンル分布</h3>
         <div className="relative mx-auto h-[260px] w-full max-w-[280px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -348,28 +367,38 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
           </ResponsiveContainer>
         </div>
       </motion.div>
-
-      <motion.div
-        {...cardMotion}
-        className="overflow-x-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 md:col-span-3"
-      >
-        <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
-        <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-          <div className="min-w-0 w-full lg:w-[70%]">
-            <TitleLengthScatter entries={entries} highlightLength={highlightLength} />
-          </div>
-          <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
-            <TitleLengthStats entries={entries} />
-          </div>
-        </div>
-      </motion.div>
       </div>
-      <CooccurrenceNetworkSection
-        entries={entries}
-        selectedSource={selectedSource}
-        selectedGenre={selectedGenre}
-      />
+
+      <div className="mt-6 space-y-6">
+        <motion.div {...cardMotion}>
+          <TrendSection
+            entries={entries}
+            selectedSource={selectedSource}
+            selectedGenre={selectedGenre}
+            onTokenClick={onTrendTokenClick}
+          />
+        </motion.div>
+        <motion.div
+          {...cardMotion}
+          className="overflow-x-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
+        >
+          <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
+          <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
+            <div className="min-w-0 w-full lg:w-[70%]">
+              <TitleLengthScatter entries={entries} highlightLength={highlightLength} />
+            </div>
+            <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
+              <TitleLengthStats entries={entries} />
+            </div>
+          </div>
+        </motion.div>
+        <CooccurrenceNetworkSection
+          entries={entries}
+          selectedSource={selectedSource}
+          selectedGenre={selectedGenre}
+        />
+      </div>
     </>
   );
 }

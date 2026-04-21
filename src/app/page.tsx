@@ -26,6 +26,7 @@ import { SimilarityCloudBridgeProvider } from "@/components/SimilarityCloudBridg
 import { UserSearchedTitleProvider } from "@/components/UserSearchedTitleContext";
 import { TitleSimilarityCheck } from "@/components/TitleSimilarityCheck";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
+import { TitleTokenDetailBridgeProvider } from "@/components/TitleTokenDetailBridge";
 import Loading from "./loading";
 
 export const dynamic = "force-dynamic";
@@ -152,59 +153,62 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
         <SimilarityCloudBridgeProvider>
           {/* 類似検索で確定したタイトル（散布図の highlight・サマリ連動）。RSC のため state はクライアント Provider で保持 */}
           <UserSearchedTitleProvider>
-            <section
-              id="filter-bar"
-              className="scroll-mt-28 border-b border-slate-800 bg-slate-900/50 sm:scroll-mt-32"
-            >
-              <div className="mx-auto max-w-6xl px-3 py-3 sm:px-6 sm:py-5">
-                <FilterBarWithRouter
-                  sources={availableSources}
-                  genres={genreOptions}
-                  currentSource={selectedSource}
-                  currentGenre={selectedGenre}
-                  totalCount={entries.length}
-                />
-              </div>
-            </section>
-
-            {!hasEntries && (
-              <p className="mx-auto max-w-6xl px-6 py-16 text-center text-sm text-slate-500">
-                条件に一致するタイトルがありません。フィルタを調整してください。
-              </p>
-            )}
-
-            {hasEntries && (
-              <div
-                id="token-cloud"
-                className="scroll-mt-28 overflow-x-hidden px-3 py-8 sm:scroll-mt-32 sm:p-8 sm:py-10"
+            {/* トレンド（DataCharts 内 TrendSection）からの語クリックで TitleAnatomy の TokenDetailModal を開く */}
+            <TitleTokenDetailBridgeProvider>
+              <section
+                id="filter-bar"
+                className="scroll-mt-28 border-b border-slate-800 bg-slate-900/50 sm:scroll-mt-32"
               >
-                <TitleAnatomy
-                  tokensWithCounts={tokensWithCounts}
-                  displayOmittedByField={displayOmittedByField}
-                  entries={entries}
-                  corpusIsEmpty={noDataGlobally}
-                  selectedSource={selectedSource}
-                  selectedGenre={selectedGenre}
-                />
-              </div>
-            )}
+                <div className="mx-auto max-w-6xl px-3 py-3 sm:px-6 sm:py-5">
+                  <FilterBarWithRouter
+                    sources={availableSources}
+                    genres={genreOptions}
+                    currentSource={selectedSource}
+                    currentGenre={selectedGenre}
+                    totalCount={entries.length}
+                  />
+                </div>
+              </section>
 
-            <section
-              id="similarity-check"
-              className="relative z-20 scroll-mt-28 border-b border-slate-800 bg-slate-950/70 pointer-events-auto sm:scroll-mt-32"
-            >
-              <div className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-8">
-                <TitleSimilarityCheck />
-              </div>
-            </section>
+              {!hasEntries && (
+                <p className="mx-auto max-w-6xl px-6 py-16 text-center text-sm text-slate-500">
+                  条件に一致するタイトルがありません。フィルタを調整してください。
+                </p>
+              )}
 
-            {/* entries / entrySources は getEntriesWithSources（ジャンル）＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一の配列 */}
-            <DataChartsSection
-              entries={entries}
-              entrySources={entrySources}
-              selectedSource={selectedSource}
-              selectedGenre={selectedGenre}
-            />
+              {hasEntries && (
+                <div
+                  id="token-cloud"
+                  className="scroll-mt-28 overflow-x-hidden px-3 py-8 sm:scroll-mt-32 sm:p-8 sm:py-10"
+                >
+                  <TitleAnatomy
+                    tokensWithCounts={tokensWithCounts}
+                    displayOmittedByField={displayOmittedByField}
+                    entries={entries}
+                    corpusIsEmpty={noDataGlobally}
+                    selectedSource={selectedSource}
+                    selectedGenre={selectedGenre}
+                  />
+                </div>
+              )}
+
+              <section
+                id="similarity-check"
+                className="relative z-20 scroll-mt-28 border-b border-slate-800 bg-slate-950/70 pointer-events-auto sm:scroll-mt-32"
+              >
+                <div className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-8">
+                  <TitleSimilarityCheck />
+                </div>
+              </section>
+
+              {/* entries / entrySources は getEntriesWithSources（ジャンル）＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一の配列 */}
+              <DataChartsSection
+                entries={entries}
+                entrySources={entrySources}
+                selectedSource={selectedSource}
+                selectedGenre={selectedGenre}
+              />
+            </TitleTokenDetailBridgeProvider>
           </UserSearchedTitleProvider>
         </SimilarityCloudBridgeProvider>
       )}

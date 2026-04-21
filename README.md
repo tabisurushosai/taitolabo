@@ -9,7 +9,7 @@
 
 | ページ | 説明 |
 |--------|------|
-| `/` | ランキング由来のトークンクラウド、**共起ネットワーク**、**タイトル類似度チェック**（入力タイトルとコーパスの類似 TOP10）、語の共起・該当作品の閲覧 |
+| `/` | ランキング由来のトークンクラウド、**共起ネットワーク**、**週次トレンド**（先週比で伸び／下がりのタイトル語）、**タイトル類似度チェック**（入力タイトルとコーパスの類似 TOP10）、語の共起・該当作品の閲覧 |
 | `/diagnose` | 入力タイトルをコーパスと照合したスコア・類似作品・推奨語の表示（任意で AI 寸評） |
 | `/kaihatsu` | **デバッグ・緊急用**: JSON の検証・Upstash Redis への保存・一覧・削除（パスワード保護）。本番の主経路は週次 GitHub Actions |
 
@@ -63,6 +63,8 @@ npm run start
 ### 自動更新（週次）
 
 毎週**火曜 AM 5:00 JST**（UTC 月曜 20:00）に **GitHub Actions** が自動実行されます。なろう小説 API から最新のランキングを取得し、**Upstash Redis** に保存します。設定は [`.github/workflows/weekly-fetch.yml`](.github/workflows/weekly-fetch.yml) を参照してください。
+
+**トレンド分析（トップの「今週のトレンド」）**は、週次ランキングを**先週分と比較できるだけのデータ**（実質 2 週間ぶん）が Redis に揃うと自動で有効になります。初回投入直後は「準備中」表示のままになることがあります。
 
 **実行状況の確認:** [Weekly Narou Fetch · Actions](https://github.com/tabisurushosai/taitolabo/actions/workflows/weekly-fetch.yml)
 
