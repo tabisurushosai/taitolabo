@@ -3,7 +3,12 @@ import type { RankingDataset, RankingEntry, RankingSource } from "./types";
 
 const INDEX_KEY = "rankings:index";
 
-const datasetKey = (source: RankingSource, date: string) => `ranking:${source}:${date}`;
+/** Redis のランキングキー（fetch-narou の冪等チェックと同一形式） */
+export function rankingDatasetKey(source: RankingSource, date: string): string {
+  return `ranking:${source}:${date}`;
+}
+
+const datasetKey = rankingDatasetKey;
 
 /** SET に格納するメンバーは Redis の dataset キー文字列そのもの（パース不要） */
 export async function listDatasetKeys(): Promise<string[]> {
