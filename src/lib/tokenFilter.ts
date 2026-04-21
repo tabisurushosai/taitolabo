@@ -157,6 +157,38 @@ const JA_STOPWORDS = [
 
 const JA_STOPWORDS_SET = new Set<string>(JA_STOPWORDS);
 
+/**
+ * タイトルに慣習的に含まれるメタ情報語。作品内容とは無関係なので分析から除外する。
+ * 必要に応じてこの配列だけ編集してチューニングする（`MIN_TOKEN_OCCURRENCE` 等とは独立）。
+ */
+export const META_INFO_STOPWORDS = [
+  "WEB",
+  "web",
+  "ウェブ",
+  "書籍",
+  "書籍化",
+  "コミカライズ",
+  "コミック",
+  "連載",
+  "連載版",
+  "連載中",
+  "完結",
+  "改稿",
+  "改訂",
+  "短編",
+  "短編版",
+  "投稿",
+  "再投稿",
+  "更新",
+  "休載",
+  "再開",
+  "旧",
+  // 「WEB版」「連載版」等の「版」残骸
+  "版",
+] as const;
+
+const META_INFO_STOPWORDS_SET = new Set<string>(META_INFO_STOPWORDS);
+
 /** 半角英字のみ・長さ1〜2（略語ホワイトリスト以外は除外） */
 const SHORT_LATIN_1_2 = /^[A-Za-z]{1,2}$/;
 
@@ -216,6 +248,7 @@ export function isDisplayableToken(token: string): boolean {
   if (SINGLE_SYMBOL_TOKENS.has(t)) return false;
   if (STANDALONE_UNITS.has(t)) return false;
   if (JA_STOPWORDS_SET.has(t)) return false;
+  if (META_INFO_STOPWORDS_SET.has(t)) return false;
   if (NUMBERS_ONLY.test(t)) return false;
   if (NUM_WITH_UNIT.test(t)) return false;
   if (DAI_ORDER.test(t)) return false;
