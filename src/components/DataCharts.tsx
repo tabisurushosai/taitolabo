@@ -104,6 +104,11 @@ export type DataChartsProps = {
   entrySources: RankingSource[];
   selectedSource: RankingSource | null;
   selectedGenre: string | null;
+  /**
+   * ソース・ジャンル UI フィルタをかける前の全ランキング行（タグ TOP10 の全体俯瞰用）。
+   * page では `allDatasets.flatMap((d) => d.entries)` を渡す。
+   */
+  globalTagOverviewEntries: RankingEntry[];
 };
 
 /** `entries` / `entrySources` は page のソース・ジャンルフィルタ済み（FilterBar と同一） */
@@ -112,6 +117,7 @@ export function DataChartsSection({
   entrySources,
   selectedSource,
   selectedGenre,
+  globalTagOverviewEntries,
 }: DataChartsProps) {
   return (
     <section
@@ -132,12 +138,19 @@ export function DataChartsSection({
         entrySources={entrySources}
         selectedSource={selectedSource}
         selectedGenre={selectedGenre}
+        globalTagOverviewEntries={globalTagOverviewEntries}
       />
     </section>
   );
 }
 
-export function DataCharts({ entries, entrySources, selectedSource, selectedGenre }: DataChartsProps) {
+export function DataCharts({
+  entries,
+  entrySources,
+  selectedSource,
+  selectedGenre,
+  globalTagOverviewEntries,
+}: DataChartsProps) {
   const tokenDetailBridge = useOptionalTitleTokenDetailBridge();
   const onTrendTokenClick =
     tokenDetailBridge !== null
@@ -211,7 +224,7 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
 
   const tagTop10 = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of entries) {
+    for (const e of globalTagOverviewEntries) {
       for (const t of e.tags) {
         const k = t.trim();
         if (!k) continue;
@@ -222,7 +235,7 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([tag, count]) => ({ tag, count }));
-  }, [entries]);
+  }, [globalTagOverviewEntries]);
 
   const total = entries.length;
 
@@ -333,10 +346,14 @@ export function DataCharts({ entries, entrySources, selectedSource, selectedGenr
       </motion.div>
 
       <motion.div
+        id="chart-global-tag-top10"
         {...cardMotion}
         className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
       >
-        <h3 className="mb-4 text-sm text-slate-400">頻出タグ TOP10</h3>
+        <h3 className="mb-1 text-sm font-medium text-slate-200">データ全体の頻出タグ TOP10</h3>
+        <p className="mb-4 text-xs leading-relaxed text-slate-500">
+          フィルタ前の全ランキング対象（投入済みデータセットの全件）から集計しています。
+        </p>
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart

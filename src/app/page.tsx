@@ -25,6 +25,7 @@ import { HomeHero } from "@/components/HomeHero";
 import { SimilarityCloudBridgeProvider } from "@/components/SimilarityCloudBridge";
 import { UserSearchedTitleProvider } from "@/components/UserSearchedTitleContext";
 import { TitleSimilarityCheck } from "@/components/TitleSimilarityCheck";
+import { GenreProfilePanel } from "@/components/GenreProfilePanel";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
 import { TitleTokenDetailBridgeProvider } from "@/components/TitleTokenDetailBridge";
 import Loading from "./loading";
@@ -120,6 +121,9 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
 
   const { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
 
+  /** フィルタ UI 適用前の全ランキング行（データ全体像のタグ TOP10 用） */
+  const globalTagOverviewEntries = allDatasets.flatMap((d) => d.entries);
+
   const { tokensWithCounts, displayOmittedByField } = buildTokensWithCounts(entries);
   const availableSources = sortSources(await getAvailableSources());
   const noDataGlobally = allEntriesFlat.length === 0;
@@ -177,6 +181,23 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
               )}
 
               {hasEntries && (
+                <section
+                  id="genre-profile"
+                  className="scroll-mt-28 border-b border-slate-800/80 bg-slate-950/40 sm:scroll-mt-32"
+                  aria-label="ジャンル特徴"
+                >
+                  <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-6">
+                    <GenreProfilePanel
+                      entries={entries}
+                      filterLabel={selectedGenre ?? "全ジャンル"}
+                      selectedSource={selectedSource}
+                      selectedGenre={selectedGenre}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {hasEntries && (
                 <div
                   id="token-cloud"
                   className="scroll-mt-28 overflow-x-hidden px-3 py-8 sm:scroll-mt-32 sm:p-8 sm:py-10"
@@ -207,6 +228,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
                 entrySources={entrySources}
                 selectedSource={selectedSource}
                 selectedGenre={selectedGenre}
+                globalTagOverviewEntries={globalTagOverviewEntries}
               />
             </TitleTokenDetailBridgeProvider>
           </UserSearchedTitleProvider>
