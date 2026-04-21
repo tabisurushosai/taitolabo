@@ -1,4 +1,5 @@
 import type { RankingEntry } from "@/lib/types";
+import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
 
 /** タイトル文字数（fetch-narou・散布図の highlight と同一ロジック） */
 export function titleCharCount(raw: string): number {
@@ -23,7 +24,7 @@ export const MIN_TITLE_LENGTH_SAMPLES = 5;
 
 export function countEntriesWithTitleLength(entries: RankingEntry[]): number {
   let n = 0;
-  for (const e of entries) {
+  for (const e of dedupeRankingEntriesByWork(entries)) {
     if (resolveTitleLength(e) !== null) n++;
   }
   return n;

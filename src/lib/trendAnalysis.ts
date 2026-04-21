@@ -1,4 +1,4 @@
-import { getFieldTokens } from "@/lib/analyzer";
+import { countTokens } from "@/lib/analyzer";
 import type { RankingEntry } from "@/lib/types";
 
 export type TrendEntry = {
@@ -20,17 +20,6 @@ export type TrendResult = {
   previousDate: string;
 };
 
-/** タイトルトークン（filterTokens 済み）の総出現回数 */
-function countTitleTokenOccurrences(entries: RankingEntry[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const e of entries) {
-    for (const t of getFieldTokens(e, "titleTokens")) {
-      m.set(t, (m.get(t) ?? 0) + 1);
-    }
-  }
-  return m;
-}
-
 function ratioForCounts(currentCount: number, previousCount: number): number {
   if (previousCount === 0) {
     return currentCount > 0 ? Number.POSITIVE_INFINITY : 0;
@@ -50,8 +39,8 @@ export function computeTrend(
     return { rising: [], falling: [] };
   }
 
-  const currentMap = countTitleTokenOccurrences(currentEntries);
-  const previousMap = countTitleTokenOccurrences(previousEntries);
+  const currentMap = countTokens(currentEntries, "titleTokens");
+  const previousMap = countTokens(previousEntries, "titleTokens");
 
   const tokenSet = new Set<string>([...currentMap.keys(), ...previousMap.keys()]);
   const rows: TrendEntry[] = [];

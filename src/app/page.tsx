@@ -28,6 +28,7 @@ import { TitleSimilarityCheck } from "@/components/TitleSimilarityCheck";
 import { GenreProfilePanel } from "@/components/GenreProfilePanel";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
 import { TitleTokenDetailBridgeProvider } from "@/components/TitleTokenDetailBridge";
+import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
 import Loading from "./loading";
 
 export const dynamic = "force-dynamic";
@@ -129,6 +130,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
   const noDataGlobally = allEntriesFlat.length === 0;
 
   const heroKpis = computeHeroKpis(entries);
+  const uniqueWorkCount = dedupeRankingEntriesByWork(entries).length;
 
   const hasEntries = entries.length > 0;
 
@@ -169,7 +171,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
                     genres={genreOptions}
                     currentSource={selectedSource}
                     currentGenre={selectedGenre}
-                    totalCount={entries.length}
+                    totalCount={uniqueWorkCount}
                   />
                 </div>
               </section>

@@ -1,4 +1,5 @@
 import type { RankingEntry } from "./types";
+import { dedupeRankingEntriesByWork } from "./rankingDedupe";
 import { isDisplayableToken } from "./tokenFilter";
 
 export type GenreProfile = {
@@ -62,8 +63,8 @@ function sortedTopCounts(map: Map<string, number>, n: number): { name: string; c
  * ジャンル（または任意のエントリ集合）の上位ランク帯の特徴を集計する。I/O なし。
  *
  * rank 昇順で先頭 `topRank` 件に絞った集合について、トークン・タグ TOP5・平均タイトル長を算出する。
- * - `avgPoints` … 入力 `entries` 全体の平均ポイント
- * - `topRangeAvgPoints` … 上位 `topRank` 件のみの平均ポイント
+ * - `avgPoints` … 入力 `entries` を作品単位にまとめたうえでの平均ポイント
+ * - `topRangeAvgPoints` … 順位の上位 `topRank` **作品**のみの平均ポイント
  *
  * points 未定義は分母から除外する。
  */
@@ -73,7 +74,8 @@ export function computeGenreProfile(
 ): GenreProfile {
   assertTopRank(topRank);
 
-  const sorted = [...entries].sort((a, b) => {
+  const byWork = dedupeRankingEntriesByWork(entries);
+  const sorted = [...byWork].sort((a, b) => {
     if (a.rank !== b.rank) return a.rank - b.rank;
     return a.title.localeCompare(b.title, "ja");
   });
@@ -83,19 +85,23 @@ export function computeGenreProfile(
 
   const tokenCounts = new Map<string, number>();
   for (const e of topSlice) {
+    const seen = new Set<string>();
     for (const raw of e.titleTokens) {
       if (!isDisplayableToken(raw)) continue;
       const t = raw.trim();
-      if (t.length === 0) continue;
+      if (t.length === 0 || seen.has(t)) continue;
+      seen.add(t);
       tokenCounts.set(t, (tokenCounts.get(t) ?? 0) + 1);
     }
   }
 
   const tagCounts = new Map<string, number>();
   for (const e of topSlice) {
+    const seen = new Set<string>();
     for (const tag of e.tags) {
       const t = tag.trim();
-      if (t.length === 0) continue;
+      if (t.length === 0 || seen.has(t)) continue;
+      seen.add(t);
       tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
     }
   }
@@ -105,7 +111,7 @@ export function computeGenreProfile(
     topTokens: sortedTopCounts(tokenCounts, 5).map(({ name, count }) => ({ token: name, count })),
     topTags: sortedTopCounts(tagCounts, 5).map(({ name, count }) => ({ tag: name, count })),
     avgTitleLength: meanTitleLength(topSlice),
-    avgPoints: meanPoints(entries),
+    avgPoints: meanPoints(byWork),
     topRangeAvgPoints: meanPoints(topSlice),
   };
 }

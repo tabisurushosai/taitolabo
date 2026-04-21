@@ -1,4 +1,4 @@
-import type { RankingEntry } from "@/lib/types";
+import type { RankingEntry, RankingSource } from "@/lib/types";
 
 /**
  * 表記ゆれ（短編／連載版など）を除いたベースタイトル。
@@ -171,4 +171,36 @@ export function computeEntryFinalWorkRootIndices(entries: readonly RankingEntry[
 
   for (let i = 0; i < n; i += 1) out[i] = find(i);
   return out;
+}
+
+/**
+ * `entries[i]` と `sources[i]` が対応しているとき、同一作品（`computeEntryFinalWorkRootIndices` 準拠）ごとに
+ * 代表 1 行とそのソースだけ残す。チャートのジャンル分布・期間別平均などで行重複を避ける。
+ */
+export function dedupeRankingEntrySourcePairs(
+  entries: readonly RankingEntry[],
+  sources: readonly RankingSource[]
+): { entries: RankingEntry[]; sources: RankingSource[] } {
+  if (entries.length === 0) return { entries: [], sources: [] };
+  if (entries.length !== sources.length) {
+    throw new Error(
+      `dedupeRankingEntrySourcePairs: length mismatch entries=${entries.length} sources=${sources.length}`
+    );
+  }
+  const roots = computeEntryFinalWorkRootIndices(entries);
+  const rootToBestIdx = new Map<number, number>();
+  for (let i = 0; i < entries.length; i += 1) {
+    const r = roots[i];
+    const prev = rootToBestIdx.get(r);
+    if (prev === undefined || isBetterRank(entries[i], entries[prev])) {
+      rootToBestIdx.set(r, i);
+    }
+  }
+  const outE: RankingEntry[] = [];
+  const outS: RankingSource[] = [];
+  for (const idx of rootToBestIdx.values()) {
+    outE.push(entries[idx]);
+    outS.push(sources[idx]);
+  }
+  return { entries: outE, sources: outS };
 }

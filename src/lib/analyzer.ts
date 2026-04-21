@@ -1,5 +1,5 @@
 import { RankingEntry } from "./types";
-import { computeEntryFinalWorkRootIndices } from "./rankingDedupe";
+import { computeEntryFinalWorkRootIndices, dedupeRankingEntriesByWork } from "./rankingDedupe";
 import {
   filterByMinOccurrence,
   filterTokens,
@@ -40,17 +40,15 @@ export function countTokenWorksDeduped(entries: RankingEntry[], field: TokenFiel
   return map;
 }
 
-/** コーパス全体で、あるフィールドに token が出現する回数 */
+/** コーパス全体で、あるフィールドに token が「含まれる作品」数（同一作品の複数ランキング行は 1 回） */
 function countTokenOccurrencesInField(
   entries: RankingEntry[],
   field: TokenField,
   token: string
 ): number {
   let n = 0;
-  for (const e of entries) {
-    for (const t of getFieldTokens(e, field)) {
-      if (t === token) n += 1;
-    }
+  for (const e of dedupeRankingEntriesByWork(entries)) {
+    if (new Set(getFieldTokens(e, field)).has(token)) n += 1;
   }
   return n;
 }
@@ -117,26 +115,34 @@ function computeUnmatchedCharCount(normalizedInput: string, matchedTokens: reado
   return unmatched;
 }
 
+/** 各トークンが「何作品に出るか」（同一作品の複数行・1 作品内の重複トークンは 1 回ずつ） */
 export function countTokens(entries: RankingEntry[], field: TokenField): Map<string, number> {
   const map = new Map<string, number>();
-  for (const e of entries) {
-    for (const t of getFieldTokens(e, field)) {
+  for (const e of dedupeRankingEntriesByWork(entries)) {
+    for (const t of new Set(getFieldTokens(e, field))) {
       map.set(t, (map.get(t) ?? 0) + 1);
     }
   }
   return map;
 }
 
+/**
+ * 対象トークンと同じフィールド内で「同じ作品の行」に一緒に出る他トークンの回数。
+ * 日間・週間など複数ソースを結合した `entries` では同一 ncode が複数行になり得るため、
+ * `dedupeRankingEntriesByWork` で 1 作品 1 代表行にまとめてから数える。
+ * 1 作品内のトークン重複は Set で 1 回だけ数える（出現作品数・`countTokenWorksDeduped` と基準を揃える）。
+ */
 export function coOccurringTokens(
   entries: RankingEntry[],
   field: TokenField,
   targetToken: string
 ): Map<string, number> {
   const map = new Map<string, number>();
-  for (const e of entries) {
-    const tokens = getFieldTokens(e, field);
-    if (!tokens.includes(targetToken)) continue;
-    for (const t of tokens) {
+  const byWork = dedupeRankingEntriesByWork(entries);
+  for (const e of byWork) {
+    const tokenSet = new Set(getFieldTokens(e, field));
+    if (!tokenSet.has(targetToken)) continue;
+    for (const t of tokenSet) {
       if (t === targetToken) continue;
       map.set(t, (map.get(t) ?? 0) + 1);
     }
@@ -181,7 +187,8 @@ export function calculateCorrelationScore(
   matchedTokenCount: number;
   totalEntries: number;
 } {
-  const totalEntries = entries.length;
+  const byWork = dedupeRankingEntriesByWork(entries);
+  const totalEntries = byWork.length;
   if (totalEntries === 0) {
     return { score: 0, matchedTokenCount: 0, totalEntries: 0 };
   }
@@ -229,7 +236,7 @@ export function findSimilarEntries(
   const inputTokens = new Set(findMatchingKnownTokens(normalized, known, MIN_MATCH_LEN));
 
   const scored: Array<{ entry: RankingEntry; sharedTokens: string[]; count: number }> = [];
-  for (const entry of entries) {
+  for (const entry of dedupeRankingEntriesByWork(entries)) {
     const entryTokens = entryAllTokens(entry);
     const shared: string[] = [];
     for (const t of Array.from(inputTokens)) {

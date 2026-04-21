@@ -23,6 +23,7 @@ import { TrendSection } from "@/components/TrendSection";
 import { useOptionalTitleTokenDetailBridge } from "@/components/TitleTokenDetailBridge";
 import { useUserSearchedTitle } from "@/components/UserSearchedTitleContext";
 import { titleCharCount } from "@/lib/titleLength";
+import { dedupeRankingEntriesByWork, dedupeRankingEntrySourcePairs } from "@/lib/rankingDedupe";
 import type { RankingEntry, RankingSource } from "@/lib/types";
 import { genreSliceColor } from "@/lib/genreChartColors";
 import { shortenGenreLabel, sortGenres } from "@/lib/genreOrder";
@@ -151,6 +152,11 @@ export function DataCharts({
   selectedGenre,
   globalTagOverviewEntries,
 }: DataChartsProps) {
+  const { entries: chartEntries, sources: chartSources } = useMemo(
+    () => dedupeRankingEntrySourcePairs(entries, entrySources),
+    [entries, entrySources],
+  );
+
   const tokenDetailBridge = useOptionalTitleTokenDetailBridge();
   const onTrendTokenClick =
     tokenDetailBridge !== null
@@ -166,21 +172,21 @@ export function DataCharts({
 
   const genreData = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of entries) {
+    for (const e of chartEntries) {
       m.set(e.genre, (m.get(e.genre) ?? 0) + 1);
     }
     const names = sortGenres(Array.from(m.keys()));
     return names.map((name) => ({ name, value: m.get(name)! }));
-  }, [entries]);
+  }, [chartEntries]);
 
   const sourceCompareRows = useMemo(() => {
     const narou: RankingEntry[] = [];
     const kaku: RankingEntry[] = [];
-    for (let i = 0; i < entries.length; i++) {
-      const src = entrySources[i];
+    for (let i = 0; i < chartEntries.length; i++) {
+      const src = chartSources[i];
       if (!src) continue;
-      if (isNarouSource(src)) narou.push(entries[i]);
-      else if (isKakuyomuSource(src)) kaku.push(entries[i]);
+      if (isNarouSource(src)) narou.push(chartEntries[i]);
+      else if (isKakuyomuSource(src)) kaku.push(chartEntries[i]);
     }
     return [
       {
@@ -199,35 +205,37 @@ export function DataCharts({
         kakuyomu: uniqueTokenTypeCount(kaku),
       },
     ];
-  }, [entries, entrySources]);
+  }, [chartEntries, chartSources]);
 
   const periodAvgRows = useMemo(() => {
     const daily: RankingEntry[] = [];
     const weekly: RankingEntry[] = [];
     const monthly: RankingEntry[] = [];
-    for (let i = 0; i < entries.length; i++) {
-      const src = entrySources[i];
+    for (let i = 0; i < chartEntries.length; i++) {
+      const src = chartSources[i];
       if (!src) continue;
       const p = periodFromSource(src);
-      if (p === "daily") daily.push(entries[i]);
-      else if (p === "weekly") weekly.push(entries[i]);
-      else if (p === "monthly") monthly.push(entries[i]);
+      if (p === "daily") daily.push(chartEntries[i]);
+      else if (p === "weekly") weekly.push(chartEntries[i]);
+      else if (p === "monthly") monthly.push(chartEntries[i]);
     }
     return [
       { period: "日間", avg: Math.round(avgPoints(daily)) },
       { period: "週間", avg: Math.round(avgPoints(weekly)) },
       { period: "月間", avg: Math.round(avgPoints(monthly)) },
     ];
-  }, [entries, entrySources]);
+  }, [chartEntries, chartSources]);
 
-  const showKakuyomuCompare = hasAnyKakuyomuEntry(entrySources);
+  const showKakuyomuCompare = hasAnyKakuyomuEntry(chartSources);
 
   const tagTop10 = useMemo(() => {
     const m = new Map<string, number>();
-    for (const e of globalTagOverviewEntries) {
+    for (const e of dedupeRankingEntriesByWork(globalTagOverviewEntries)) {
+      const seen = new Set<string>();
       for (const t of e.tags) {
         const k = t.trim();
-        if (!k) continue;
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
         m.set(k, (m.get(k) ?? 0) + 1);
       }
     }
@@ -237,14 +245,14 @@ export function DataCharts({
       .map(([tag, count]) => ({ tag, count }));
   }, [globalTagOverviewEntries]);
 
-  const total = entries.length;
+  const total = chartEntries.length;
 
   if (entries.length === 0) {
     return (
       <div className="space-y-6">
         <motion.div {...cardMotion}>
           <TrendSection
-            entries={entries}
+            entries={chartEntries}
             selectedSource={selectedSource}
             selectedGenre={selectedGenre}
             onTokenClick={onTrendTokenClick}
@@ -268,7 +276,7 @@ export function DataCharts({
           </motion.div>
         </div>
         <CooccurrenceNetworkSection
-          entries={entries}
+          entries={chartEntries}
           selectedSource={selectedSource}
           selectedGenre={selectedGenre}
         />
@@ -389,7 +397,7 @@ export function DataCharts({
       <div className="mt-6 space-y-6">
         <motion.div {...cardMotion}>
           <TrendSection
-            entries={entries}
+            entries={chartEntries}
             selectedSource={selectedSource}
             selectedGenre={selectedGenre}
             onTokenClick={onTrendTokenClick}
@@ -403,15 +411,15 @@ export function DataCharts({
           <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
             <div className="min-w-0 w-full lg:w-[70%]">
-              <TitleLengthScatter entries={entries} highlightLength={highlightLength} />
+              <TitleLengthScatter entries={chartEntries} highlightLength={highlightLength} />
             </div>
             <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
-              <TitleLengthStats entries={entries} />
+              <TitleLengthStats entries={chartEntries} />
             </div>
           </div>
         </motion.div>
         <CooccurrenceNetworkSection
-          entries={entries}
+          entries={chartEntries}
           selectedSource={selectedSource}
           selectedGenre={selectedGenre}
         />

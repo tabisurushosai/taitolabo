@@ -1,4 +1,5 @@
 import { countTokens } from "@/lib/analyzer";
+import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
 import { filterByMinOccurrence, MIN_TAG_OCCURRENCE, MIN_TOKEN_OCCURRENCE } from "@/lib/tokenFilter";
 import type { RankingEntry } from "@/lib/types";
 
@@ -41,7 +42,7 @@ export type HomeHeroKpis = {
 /** ソース・ジャンルで絞り込んだ `entries` に対するヒーロー KPI（tokenFilter 閾値適用済み） */
 export function computeHeroKpis(entries: RankingEntry[]): HomeHeroKpis {
   return {
-    titleCount: entries.length,
+    titleCount: dedupeRankingEntriesByWork(entries).length,
     uniqueWordCount: uniqueTitleAndSynopsisTokenCount(entries),
     uniqueTagCount: uniqueTagTokenCount(entries),
     rawUniqueWordCount: rawUniqueTitleAndSynopsisTokenCount(entries),
