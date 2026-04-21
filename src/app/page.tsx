@@ -199,7 +199,12 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
             </section>
 
             {/* entries / entrySources は getEntriesWithSources（ジャンル）＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一の配列 */}
-            <DataChartsSection entries={entries} entrySources={entrySources} />
+            <DataChartsSection
+              entries={entries}
+              entrySources={entrySources}
+              selectedSource={selectedSource}
+              selectedGenre={selectedGenre}
+            />
           </UserSearchedTitleProvider>
         </SimilarityCloudBridgeProvider>
       )}

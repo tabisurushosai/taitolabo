@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { CooccurrenceNetworkSection } from "@/components/CooccurrenceNetworkSection";
 import { TitleLengthScatter } from "@/components/TitleLengthScatter";
 import { TitleLengthStats } from "@/components/TitleLengthStats";
 import { useUserSearchedTitle } from "@/components/UserSearchedTitleContext";
@@ -99,10 +100,17 @@ function uniqueTokenTypeCount(list: RankingEntry[]): number {
 export type DataChartsProps = {
   entries: RankingEntry[];
   entrySources: RankingSource[];
+  selectedSource: RankingSource | null;
+  selectedGenre: string | null;
 };
 
 /** `entries` / `entrySources` は page のソース・ジャンルフィルタ済み（FilterBar と同一） */
-export function DataChartsSection({ entries, entrySources }: DataChartsProps) {
+export function DataChartsSection({
+  entries,
+  entrySources,
+  selectedSource,
+  selectedGenre,
+}: DataChartsProps) {
   return (
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
       <motion.h2
@@ -114,12 +122,17 @@ export function DataChartsSection({ entries, entrySources }: DataChartsProps) {
       >
         データの全体像
       </motion.h2>
-      <DataCharts entries={entries} entrySources={entrySources} />
+      <DataCharts
+        entries={entries}
+        entrySources={entrySources}
+        selectedSource={selectedSource}
+        selectedGenre={selectedGenre}
+      />
     </section>
   );
 }
 
-export function DataCharts({ entries, entrySources }: DataChartsProps) {
+export function DataCharts({ entries, entrySources, selectedSource, selectedGenre }: DataChartsProps) {
   const searched = useUserSearchedTitle();
   const highlightLength = useMemo(() => {
     const t = searched?.userTitle;
@@ -204,28 +217,36 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
 
   if (entries.length === 0) {
     return (
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <motion.div
-          {...cardMotion}
-          className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 md:col-span-3"
-        >
-          <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
-          <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-            <div className="min-w-0 w-full lg:w-[70%]">
-              <TitleLengthScatter entries={[]} highlightLength={highlightLength} />
+      <>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <motion.div
+            {...cardMotion}
+            className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 md:col-span-3"
+          >
+            <h3 className="mb-1 text-sm font-medium text-slate-200">タイトル文字数 × 順位</h3>
+            <p className="mb-4 text-xs text-slate-500">上位作はどの文字数帯に集中しているか</p>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
+              <div className="min-w-0 w-full lg:w-[70%]">
+                <TitleLengthScatter entries={[]} highlightLength={highlightLength} />
+              </div>
+              <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
+                <TitleLengthStats entries={[]} />
+              </div>
             </div>
-            <div className="w-full min-w-0 shrink-0 lg:w-[30%]">
-              <TitleLengthStats entries={[]} />
-            </div>
-          </div>
-        </motion.div>
-      </div>
+          </motion.div>
+        </div>
+        <CooccurrenceNetworkSection
+          entries={entries}
+          selectedSource={selectedSource}
+          selectedGenre={selectedGenre}
+        />
+      </>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
       <motion.div
         {...cardMotion}
         className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6"
@@ -343,7 +364,13 @@ export function DataCharts({ entries, entrySources }: DataChartsProps) {
           </div>
         </div>
       </motion.div>
-    </div>
+      </div>
+      <CooccurrenceNetworkSection
+        entries={entries}
+        selectedSource={selectedSource}
+        selectedGenre={selectedGenre}
+      />
+    </>
   );
 }
 
