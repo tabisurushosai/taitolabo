@@ -11,7 +11,7 @@
 |--------|------|
 | `/` | ランキング由来のトークンクラウド、**タイトル類似度チェック**（入力タイトルとコーパスの類似 TOP10）、語の共起・該当作品の閲覧 |
 | `/diagnose` | 入力タイトルをコーパスと照合したスコア・類似作品・推奨語の表示（任意で AI 寸評） |
-| `/kaihatsu` | JSON の検証・**Upstash Redis への保存**・データセット一覧・削除（パスワード保護） |
+| `/kaihatsu` | **デバッグ・緊急用**: JSON の検証・Upstash Redis への保存・一覧・削除（パスワード保護）。本番の主経路は週次 GitHub Actions |
 
 ランキング本体のデータは **Upstash Redis**（Vercel の環境変数 `KV_REST_API_URL` / `KV_REST_API_TOKEN`）に保存され、ランタイムで読み書きします。リポジトリの `data/rankings/` は使用しません。
 
@@ -32,11 +32,7 @@ vercel env pull .env.local    # 環境変数をローカルに取得
 
 ## ローカル開発用の環境変数設定
 
-`vercel env pull` を使わず KV だけ手で入れる場合（`fetch-narou:push` や Redis 閲覧をローカルで試すとき）:
-
-1. **`.env.local.example`** を **`.env.local`** にコピーする（例: `cp .env.local.example .env.local`）。
-2. **Vercel** の **Settings → Environment Variables** から `KV_REST_API_URL` と `KV_REST_API_TOKEN` の値を取得し、`.env.local` に貼り付ける。  
-   （[Environment Variables（Vercel Docs）](https://vercel.com/docs/projects/environment-variables)）
+`vercel env pull` を使わず KV だけ手で入れる場合は、下記 **[データの更新方法 → 環境変数](#環境変数)** も参照し、**`.env.local.example`** を **`.env.local`** にコピーしてから値を埋めてください（[Environment Variables（Vercel Docs）](https://vercel.com/docs/projects/environment-variables)）。
 
 ## ローカルで動かす手順
 
@@ -62,40 +58,66 @@ npm run build
 npm run start
 ```
 
-## ランキング取得（なろう小説API）
+## データの更新方法
 
-**なろう**のランキング JSON をローカルで生成し、`/kaihatsu` に貼り付けて投入する手順です。
+### 自動更新（週次）
 
-1. 初回のみ `npm install`（**kuromoji** の辞書が `node_modules/kuromoji/dict` に展開されます）。
-2. プロジェクトルートで次を実行する。
+毎週**火曜 AM 5:00 JST**（UTC 月曜 20:00）に **GitHub Actions** が自動実行されます。なろう小説 API から最新のランキングを取得し、**Upstash Redis** に保存します。設定は [`.github/workflows/weekly-fetch.yml`](.github/workflows/weekly-fetch.yml) を参照してください。
 
-   ```bash
-   npm run fetch-narou
-   ```
+**実行状況の確認:** [Weekly Narou Fetch · Actions](https://github.com/tabisurushosai/taitolabo/actions/workflows/weekly-fetch.yml)
 
-3. `scripts/output/narou/` に **15 ファイル**（日/週/月 × 総合・各ジャンル）が出力されます。中身をコピーし、**`/kaihatsu`** の「データ投入」に貼り付け、「検証する」→「本番に保存する」で Redis に保存します。
+週次ジョブが **上書き保存**する運用のため、Actions 側では `fetch-narou:push` に **`--skip-if-exists` は付けません**（常に最新取得を試みます）。手動デバッグ向けのオプションです。
 
-**注意:** [なろう小説APIの利用規約](https://dev.syosetu.com/man/api/)に従い、取得データのキャッシュは最長 **2 週間**とし、再取得は **2 週間以内**に行ってください。
+### 手動実行
 
-Redis へ直接投入する場合は `npm run fetch-narou:push`（`.env.local` に `KV_REST_API_URL` / `KV_REST_API_TOKEN` が必要）。詳細は `scripts/fetch-narou.ts` と `src/lib/data.ts` を参照してください。
+#### 方法1: ローカルから実行
 
-## 週次自動更新の設定
+初回のみ `npm install`（**kuromoji** の辞書は `node_modules/kuromoji/dict` に展開されます）。
 
-1. **Vercel** → **Settings → Environment Variables** を開く。
-2. 次の 2 つの値をコピーする。
-   - `KV_REST_API_URL`
-   - `KV_REST_API_TOKEN`
-3. **GitHub** → リポジトリの **Settings → Secrets and variables → Actions** を開く。
-4. 「**New repository secret**」で、次の 2 つを同名で登録する。
-   - `KV_REST_API_URL`（Vercel でコピーした値）
-   - `KV_REST_API_TOKEN`（Vercel でコピーした値）
-5. **Actions** タブから **「Weekly Narou Fetch」** を手動実行して初回動作確認する。
+```bash
+npm run fetch-narou                               # scripts/output/narou/ に 15 JSON（ファイルのみ）
+npm run fetch-narou -- --push                     # Redis にも投入
+npm run fetch-narou -- --push --skip-if-exists      # 同日・同一キーが既にあれば該当ソースをスキップ（冪等）
+```
 
-CI（`ubuntu-latest`）では `npm ci` 後に `node_modules/kuromoji/dict` が配置されることを前提にしています。ワークフロー冒頭で辞書ファイルの存在を確認するステップがあります。読み込みに失敗する場合は Actions のログを確認し、`npm ci` のキャッシュや kuromoji の依存を確認してください。
+実装上の詳細は `scripts/fetch-narou.ts`・`src/lib/data.ts` を参照してください。
+
+#### 方法2: GitHub Actions から手動実行
+
+**Actions** タブ → **Weekly Narou Fetch** → **Run workflow**
+
+#### 方法3: Web UI から投入（デバッグ用）
+
+**`/kaihatsu`** にアクセスし、JSON を貼り付けて「検証する」→「本番に保存する」（下記の補助機能）。
+
+### 環境変数
+
+ローカル（`.env.local`）および **GitHub Actions の Secrets** に、少なくとも次を設定します。
+
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+
+**Vercel** の本番・プレビューにも同じキーが必要です。ローカルへの取得が最も簡単な方法は次です。
+
+```bash
+npx vercel env pull .env.local
+```
+
+手で値を入れる場合は **Vercel** の **Settings → Environment Variables** からコピーし、GitHub の **Settings → Secrets and variables → Actions** に同名で登録してください。
+
+### キャッシュ方針
+
+[なろう小説 API の利用規約](https://dev.syosetu.com/man/api/)に従い、取得データのキャッシュは最長 **2 週間**です。**週次更新**でこの要件を満たしています。
+
+### 失敗閾値
+
+15 ソースのうち **2 つ以下**の失敗は警告のみでジョブは**成功**（exit 0）。**3 つ以上**失敗した場合のみジョブが**失敗**（exit 1）となり、通知のノイズを抑えます。
 
 ---
 
 ## データ追加フロー（手動・その他ソース）
+
+なろう以外や独自生成データを扱う場合。本番の主経路は週次 Actions ですが、**`/kaihatsu`** での検証・投入（デバッグ・緊急時）に加え、次のフローも利用できます。
 
 1. ルートの **[PDF_TO_JSON_PROMPT.md](./PDF_TO_JSON_PROMPT.md)** 等で `RankingDataset` 形式の JSON を用意する（**Claude** 等での生成可）。
 2. 生成した JSON を **`/kaihatsu`**（パスワード入力後）に貼り、「検証する」で形式を確認する。
@@ -165,3 +187,11 @@ npx vercel --prod
 ## AI 寸評の料金の目安
 
 モデルは **Claude Haiku 4.5**（`claude-haiku-4-5-20251001`）を想定しています。おおざっぱに、**1 回の寸評あたり数円未満〜数十銭程度**（入力・出力トークン量による）で、**月に約 1,000 回叩いても数百円〜千円未満に収まりやすい**オーダーです。正確な単価は [Anthropic の料金ページ](https://www.anthropic.com/pricing) を参照してください。
+
+## 監視
+
+GitHub Actions の実行結果は次から確認できます。
+
+[Weekly Narou Fetch · Actions](https://github.com/tabisurushosai/taitolabo/actions/workflows/weekly-fetch.yml)
+
+失敗時は GitHub に登録したメールアドレスへ通知が届きます（**Settings → Notifications** で調整可能）。

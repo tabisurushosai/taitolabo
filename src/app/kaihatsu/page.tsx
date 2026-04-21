@@ -363,7 +363,10 @@ export default function KaihatsuPage() {
 
       <div className="mx-auto max-w-4xl min-w-0 space-y-10">
         <header>
-          <h1 className="text-2xl font-bold leading-tight text-amber-400 sm:text-3xl">開発しちゃいよう</h1>
+          <p className="text-xs leading-relaxed text-slate-600">
+            現在、データは GitHub Actions により週次自動更新されています。このページはデバッグや緊急投入用の補助機能です。
+          </p>
+          <h1 className="mt-3 text-2xl font-bold leading-tight text-amber-400 sm:text-3xl">開発しちゃいよう</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
             ランキング JSON を検証し、<strong className="text-slate-300">Upstash Redis</strong> に保存します。
           </p>
