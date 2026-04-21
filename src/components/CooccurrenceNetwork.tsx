@@ -166,13 +166,13 @@ export function CooccurrenceNetwork({
       if (!fg) return;
       const charge = fg.d3Force("charge") as { strength?: (v?: number) => unknown } | undefined;
       if (charge && typeof charge.strength === "function") {
-        charge.strength(-140);
+        charge.strength(-220);
       }
       const link = fg.d3Force("link") as {
         distance?: (d: number | ((e: unknown) => number)) => unknown;
       } | null;
       if (link && typeof link.distance === "function") {
-        link.distance(72);
+        link.distance(100);
       }
     };
     const t0 = window.setTimeout(applyForces, 0);
@@ -347,6 +347,7 @@ export function CooccurrenceNetwork({
         enableZoomInteraction
         enablePanInteraction
         enablePointerInteraction
+        enableNodeDrag
       />
     </div>
   );
