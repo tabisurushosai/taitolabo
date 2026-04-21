@@ -20,6 +20,11 @@ export function SiteFooter() {
           </a>
           ）経由で取得しています。各作品の著作権は作者に帰属します。
         </p>
+        <p className="mx-auto mt-5 max-w-2xl leading-relaxed text-slate-600">
+          タイトラボは創作支援のための観察ツールです。
+          マーケティング最適化やSEO対策への転用は想定しておらず、
+          作品の価値はランキング傾向ではなく、その作品自体にあります。
+        </p>
 
         <div className="mx-auto mt-8 max-w-2xl border-t border-slate-800/80 pt-8">
           <p className="text-slate-400">このサイトは「旅する書斎」が作成しました。</p>
