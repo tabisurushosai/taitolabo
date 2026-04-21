@@ -19,7 +19,15 @@ type Props = {
 
 const FONT_FAMILY = `ui-sans-serif, "Noto Sans JP", system-ui, sans-serif`;
 
-/** 狭いビューポート or 主入力がタッチ */
+/**
+ * force-graph の replace 後に余計な ctx.restore() が走るため、
+ * 自前の save/restore の直後にダミー save を積み、ライブラリの restore がそれを pop するようにする。
+ */
+function endNodeCanvasPaintForForceGraphBug(ctx: CanvasRenderingContext2D) {
+  ctx.restore();
+  ctx.save();
+}
+
 function useTouchPrimaryUi(): boolean {
   const [touchPrimary, setTouchPrimary] = useState(false);
 
@@ -79,10 +87,6 @@ function useGraphLayoutStats(graph: CooccurrenceGraph) {
       adjacency: buildAdjacency(edges),
     };
   }, [graph]);
-}
-
-function nodeBaseRadius(count: number): number {
-  return Math.sqrt(Math.max(1, count)) * 3 + 4;
 }
 
 export function CooccurrenceNetwork({
@@ -145,7 +149,7 @@ export function CooccurrenceNetwork({
     return { nodes: graph.nodes as GraphNode[], links };
   }, [graph]);
 
-  const { maxNodeCount, maxLinkWeight, adjacency } = useGraphLayoutStats(graph);
+  const { maxNodeCount: maxCount, maxLinkWeight, adjacency } = useGraphLayoutStats(graph);
 
   const focusCenterId = touchPrimary ? tapFocusId : hoveredId;
 
@@ -156,7 +160,6 @@ export function CooccurrenceNetwork({
     return s;
   }, [focusCenterId, adjacency]);
 
-  /** replace モードはライブラリの ctx.restore 不整合で描画が壊れるため、透明のデフォルト円の上に after で描画 */
   useEffect(() => {
     const applyForces = () => {
       const fg = fgRef.current;
@@ -180,47 +183,44 @@ export function CooccurrenceNetwork({
     };
   }, [graphData]);
 
-  const getNodeFill = useCallback(
-    (count: number) => {
-      const denom = maxNodeCount <= 0 ? 1 : maxNodeCount;
-      const ratio = Math.max(0, Math.min(1, count / denom));
-      const opacity = 0.4 + 0.6 * ratio;
-      return `rgba(251, 191, 36, ${opacity})`;
-    },
-    [maxNodeCount]
-  );
-
   const nodeCanvasObject = useCallback(
     (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as SimNode;
       const x = n.x;
       const y = n.y;
-      if (x === undefined || y === undefined || Number.isNaN(x) || Number.isNaN(y)) return;
 
-      const label = String(n.id);
+      ctx.save();
+
+      if (x === undefined || y === undefined || Number.isNaN(x) || Number.isNaN(y)) {
+        endNodeCanvasPaintForForceGraphBug(ctx);
+        return;
+      }
+
+      const label = String(n.id ?? "");
+      const baseRadius = Math.sqrt(Math.max(1, n.count || 1)) * 3 + 5;
+      const ratio = Math.max(0, Math.min(1, (n.count || 1) / maxCount));
+      const opacity = 0.5 + 0.5 * ratio;
+
       const id = label;
-      const baseR = nodeBaseRadius(n.count);
-
       const dimmed = focusNodeIds !== null && !focusNodeIds.has(id);
       const isFocusSelf = focusCenterId === id;
       const neighborHighlight =
         focusCenterId !== null && !isFocusSelf && focusNodeIds !== null && focusNodeIds.has(id);
 
-      ctx.save();
       if (dimmed) ctx.globalAlpha = 0.22;
 
       ctx.beginPath();
-      ctx.arc(x, y, baseR, 0, 2 * Math.PI);
-      ctx.fillStyle = getNodeFill(n.count);
+      ctx.arc(x, y, baseRadius, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(251, 191, 36, ${opacity})`;
       ctx.fill();
 
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
       ctx.lineWidth = Math.max(1 / globalScale, 0.5);
       ctx.stroke();
 
       if (!dimmed && isFocusSelf) {
         ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.lineWidth = Math.max(2.4 / globalScale, 1);
+        ctx.lineWidth = Math.max(2.2 / globalScale, 1);
         ctx.stroke();
       } else if (!dimmed && neighborHighlight) {
         ctx.strokeStyle = "rgba(251, 191, 36, 0.85)";
@@ -228,16 +228,16 @@ export function CooccurrenceNetwork({
         ctx.stroke();
       }
 
-      const fontSize = Math.max(10, 12 / Math.max(globalScale, 0.15));
-      ctx.font = `${fontSize}px ${FONT_FAMILY}`;
+      const fontSize = Math.max(11, 13 / Math.max(globalScale, 0.12));
+      ctx.font = `bold ${fontSize}px ${FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = dimmed ? "rgba(255, 255, 255, 0.35)" : "#FFFFFF";
       ctx.fillText(label, x, y);
 
-      ctx.restore();
+      endNodeCanvasPaintForForceGraphBug(ctx);
     },
-    [focusNodeIds, focusCenterId, getNodeFill]
+    [maxCount, focusNodeIds, focusCenterId]
   );
 
   const nodePointerAreaPaint = useCallback(
@@ -247,11 +247,13 @@ export function CooccurrenceNetwork({
       const x = n.x;
       const y = n.y;
       if (x === undefined || y === undefined) return;
-      const r = nodeBaseRadius(n.count);
+      const r = Math.sqrt(Math.max(1, n.count || 1)) * 3 + 5;
+      ctx.save();
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.fill();
+      endNodeCanvasPaintForForceGraphBug(ctx);
     },
     []
   );
@@ -261,28 +263,31 @@ export function CooccurrenceNetwork({
       const l = link as GraphLink & { weight?: number };
       const w = Math.max(1, Number(l.weight ?? 1));
       const denom = maxLinkWeight <= 0 ? 1 : maxLinkWeight;
-      const opacity = 0.2 + 0.55 * (w / denom);
-      if (!focusNodeIds) return `rgba(148, 163, 184, ${Math.min(opacity, 0.85)})`;
+      const opacity = 0.2 + 0.5 * (w / denom);
+      if (!focusNodeIds) return `rgba(148, 163, 184, ${Math.min(opacity, 0.9)})`;
       const a = linkEndpointId(l.source);
       const b = linkEndpointId(l.target);
       const inFocus = focusNodeIds.has(a) && focusNodeIds.has(b);
       return inFocus
-        ? `rgba(148, 163, 184, ${Math.min(0.25 + 0.55 * (w / denom), 0.92)})`
+        ? `rgba(148, 163, 184, ${Math.min(0.25 + 0.5 * (w / denom), 0.92)})`
         : "rgba(148, 163, 184, 0.18)";
     },
     [maxLinkWeight, focusNodeIds]
   );
 
-  const linkWidthFn = useCallback((link: object) => {
-    const l = link as GraphLink & { weight?: number };
-    const w = Math.max(1, Number(l.weight ?? 1));
-    const base = Math.sqrt(w) * 0.8;
-    if (!focusNodeIds) return base;
-    const a = linkEndpointId(l.source);
-    const b = linkEndpointId(l.target);
-    const inFocus = focusNodeIds.has(a) && focusNodeIds.has(b);
-    return inFocus ? base : base * 0.45;
-  }, [focusNodeIds]);
+  const linkWidthFn = useCallback(
+    (link: object) => {
+      const l = link as GraphLink & { weight?: number };
+      const w = Math.max(1, Number(l.weight ?? 1));
+      const base = Math.sqrt(w) * 0.8;
+      if (!focusNodeIds) return base;
+      const a = linkEndpointId(l.source);
+      const b = linkEndpointId(l.target);
+      const inFocus = focusNodeIds.has(a) && focusNodeIds.has(b);
+      return inFocus ? base : base * 0.45;
+    },
+    [focusNodeIds]
+  );
 
   const onNodeHover = useCallback(
     (node: { id?: string | number } | null) => {
@@ -323,16 +328,13 @@ export function CooccurrenceNetwork({
         graphData={graphData}
         nodeId="id"
         nodeLabel="id"
-        nodeColor={() => "rgba(0,0,0,0)"}
-        nodeVal={() => 1}
-        nodeRelSize={1}
-        nodeCanvasObjectMode="after"
+        nodeCanvasObjectMode={() => "replace"}
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={nodePointerAreaPaint}
         linkSource="source"
         linkTarget="target"
-        linkWidth={linkWidthFn}
         linkColor={linkColorFn}
+        linkWidth={linkWidthFn}
         backgroundColor="transparent"
         d3AlphaDecay={0.028}
         d3VelocityDecay={0.35}
