@@ -29,6 +29,11 @@ import { GenreProfilePanel } from "@/components/GenreProfilePanel";
 import { TitleAnatomy } from "@/components/TitleAnatomy";
 import { TitleTokenDetailBridgeProvider } from "@/components/TitleTokenDetailBridge";
 import { dedupeRankingEntriesByWork } from "@/lib/rankingDedupe";
+import {
+  filterEntrySourcePairsByNoveltype,
+  parseNoveltypeQuery,
+  type NoveltypeQuery,
+} from "@/lib/noveltypeFilter";
 import Loading from "./loading";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +88,7 @@ function isRankingSource(s: string): s is RankingSource {
 type SearchParamsInput = {
   source?: string | string[];
   genre?: string | string[];
+  noveltype?: string | string[];
 };
 
 function getEntriesWithSources(
@@ -101,9 +107,18 @@ function getEntriesWithSources(
   return { entries, entrySources };
 }
 
+/** ジャンル特徴パネルの見出し用（作品種別が「全部」以外のときだけ接尾辞を付ける） */
+function genreProfileFilterLabel(genre: string | null, noveltype: NoveltypeQuery): string {
+  const base = genre ?? "全ジャンル";
+  if (noveltype === "tanpen") return `${base}・短編`;
+  if (noveltype === "rensai") return `${base}・連載`;
+  return base;
+}
+
 async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }) {
   const rawSource = firstParam(searchParams.source);
   const rawGenre = firstParam(searchParams.genre);
+  const rawNoveltype = firstParam(searchParams.noveltype);
 
   const allDatasets = await loadAllDatasets();
   const allEntriesFlat = allDatasets.flatMap((d) => d.entries);
@@ -120,7 +135,14 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
   const selectedGenre: string | null =
     rawGenre !== undefined && genreOptions.includes(rawGenre) ? rawGenre : null;
 
-  const { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
+  const selectedNoveltype = parseNoveltypeQuery(rawNoveltype);
+
+  let { entries, entrySources } = getEntriesWithSources(datasets, selectedGenre);
+  ({ entries, entrySources } = filterEntrySourcePairsByNoveltype(
+    entries,
+    entrySources,
+    selectedNoveltype,
+  ));
 
   /** フィルタ UI 適用前の全ランキング行（データ全体像のタグ TOP10 用） */
   const globalTagOverviewEntries = allDatasets.flatMap((d) => d.entries);
@@ -171,6 +193,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
                     genres={genreOptions}
                     currentSource={selectedSource}
                     currentGenre={selectedGenre}
+                    currentNoveltype={selectedNoveltype}
                     totalCount={uniqueWorkCount}
                   />
                 </div>
@@ -191,7 +214,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
                   <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-6">
                     <GenreProfilePanel
                       entries={entries}
-                      filterLabel={selectedGenre ?? "全ジャンル"}
+                      filterLabel={genreProfileFilterLabel(selectedGenre, selectedNoveltype)}
                       selectedSource={selectedSource}
                       selectedGenre={selectedGenre}
                     />
@@ -224,7 +247,7 @@ async function HomeContent({ searchParams }: { searchParams: SearchParamsInput }
                 </div>
               </section>
 
-              {/* entries / entrySources は getEntriesWithSources（ジャンル）＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一の配列 */}
+              {/* entries / entrySources は getEntriesWithSources ＋作品種別（noveltype）絞り込み＋データセットのソース絞り込み済み。散布図・サマリは FilterBar と同一。タグTOP10 用 globalTagOverviewEntries だけは仕様上フィルタ非適用（§10） */}
               <DataChartsSection
                 entries={entries}
                 entrySources={entrySources}

@@ -361,6 +361,9 @@ export function DataCharts({
         <h3 className="mb-1 text-sm font-medium text-slate-200">データ全体の頻出タグ TOP10</h3>
         <p className="mb-4 text-xs leading-relaxed text-slate-500">
           フィルタ前の全ランキング対象（投入済みデータセットの全件）から集計しています。
+          <span className="mt-1 block text-slate-500">
+            ※ 作品種別フィルタは適用されません（全データから集計）。
+          </span>
         </p>
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
