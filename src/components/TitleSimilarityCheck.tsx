@@ -373,6 +373,9 @@ export function TitleSimilarityCheck() {
           </span>
         </p>
       </div>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        ※ 類似度検索はページ上部の作品種別フィルタとは独立して動作します（全コーパスから検索）。
+      </p>
 
       <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-stretch">
         <form

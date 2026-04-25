@@ -512,6 +512,9 @@ export function TrendSection({
 
       {state.kind === "ok" ? (
         <div className="flex w-full min-w-0 max-w-full flex-col flex-wrap gap-8 md:flex-row md:gap-6 lg:gap-10">
+          <p className="w-full shrink-0 basis-full text-xs leading-relaxed text-slate-500">
+            ※ 上昇／下降リストは週間ランキング全体から集計します。ページ上部の作品種別フィルタは未連動です。
+          </p>
           <div className="w-full min-w-0 max-w-full flex-1 basis-full md:min-w-0 md:flex-1 md:basis-[calc(50%-0.75rem)]">
             <h3 className="mb-3 flex min-w-0 flex-wrap items-center gap-2 text-sm font-semibold text-amber-200/90">
               <span aria-hidden>🔥</span>
