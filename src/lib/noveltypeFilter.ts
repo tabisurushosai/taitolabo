@@ -54,12 +54,13 @@ export function filterEntriesByNoveltype<T extends { isShort?: boolean }>(
  * 長さ不一致のときは即座に例外とする（防御的）。
  *
  * `query === 'all'` のときは、渡された配列をそのまま返す（同じ参照）。
+ * `entrySources` の要素型（例: `RankingSource`）は戻り値でも保持する。
  */
-export function filterEntrySourcePairsByNoveltype(
+export function filterEntrySourcePairsByNoveltype<S extends string = string>(
   entries: RankingEntry[],
-  entrySources: string[],
+  entrySources: S[],
   query: NoveltypeQuery,
-): { entries: RankingEntry[]; entrySources: string[] } {
+): { entries: RankingEntry[]; entrySources: S[] } {
   if (entries.length !== entrySources.length) {
     throw new Error(
       `filterEntrySourcePairsByNoveltype: length mismatch entries=${entries.length} entrySources=${entrySources.length}`,
@@ -69,7 +70,7 @@ export function filterEntrySourcePairsByNoveltype(
     return { entries, entrySources };
   }
   const outE: RankingEntry[] = [];
-  const outS: string[] = [];
+  const outS: S[] = [];
   for (let i = 0; i < entries.length; i += 1) {
     if (entryMatchesNoveltype(entries[i], query)) {
       outE.push(entries[i]);

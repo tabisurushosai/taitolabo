@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import CountUp from "react-countup";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { RANKING_SOURCE_LABELS, type RankingSource } from "@/lib/types";
+import type { NoveltypeQuery } from "@/lib/noveltypeFilter";
 
 export type FilterBarChange = {
   source: RankingSource | null;
   genre: string | null;
+  noveltype: NoveltypeQuery;
 };
 
 export type FilterBarProps = {
@@ -16,6 +18,7 @@ export type FilterBarProps = {
   genres: string[];
   currentSource: RankingSource | null;
   currentGenre: string | null;
+  currentNoveltype: NoveltypeQuery;
   totalCount: number;
   onChange: (next: FilterBarChange) => void;
 };
@@ -40,10 +43,12 @@ export function FilterBar({
   genres,
   currentSource,
   currentGenre,
+  currentNoveltype,
   totalCount,
   onChange,
 }: FilterBarProps) {
-  const filterActive = currentSource !== null || currentGenre !== null;
+  const filterActive =
+    currentSource !== null || currentGenre !== null || currentNoveltype !== "all";
   /** モバイル・デスクトップ共通: 既定は閉じて 1 行だけ。開いたときだけソース・ジャンル一覧 */
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
@@ -59,7 +64,13 @@ export function FilterBar({
     const srcLabel =
       currentSource === null ? "全ソース" : RANKING_SOURCE_LABELS[currentSource];
     const genreLabel = currentGenre === null ? "全ジャンル" : currentGenre;
-    return `${srcLabel} · ${genreLabel}`;
+    const novelLabel =
+      currentNoveltype === "all"
+        ? "全作品種別"
+        : currentNoveltype === "tanpen"
+          ? "短編"
+          : "連載";
+    return `${srcLabel} · ${genreLabel} · ${novelLabel}`;
   })();
 
   return (
@@ -77,7 +88,7 @@ export function FilterBar({
           {filterActive && (
             <button
               type="button"
-              onClick={() => applyFilter({ source: null, genre: null })}
+              onClick={() => applyFilter({ source: null, genre: null, noveltype: "all" })}
               className="rounded-full px-2.5 py-1 text-xs text-slate-500 transition-colors hover:bg-slate-800/80 hover:text-slate-300"
             >
               リセット
@@ -98,7 +109,7 @@ export function FilterBar({
               </>
             ) : (
               <>
-                ソース・ジャンル
+                ソース・ジャンル・作品種別
                 <ChevronDown className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
               </>
             )}
@@ -122,7 +133,9 @@ export function FilterBar({
                   <button
                     type="button"
                     className={pillClass(currentSource === null)}
-                    onClick={() => applyFilter({ source: null, genre: currentGenre })}
+                    onClick={() =>
+                      applyFilter({ source: null, genre: currentGenre, noveltype: currentNoveltype })
+                    }
                   >
                     全ソース
                   </button>
@@ -131,7 +144,9 @@ export function FilterBar({
                       key={src}
                       type="button"
                       className={pillClass(currentSource === src)}
-                      onClick={() => applyFilter({ source: src, genre: currentGenre })}
+                      onClick={() =>
+                        applyFilter({ source: src, genre: currentGenre, noveltype: currentNoveltype })
+                      }
                     >
                       {RANKING_SOURCE_LABELS[src]}
                     </button>
@@ -145,7 +160,9 @@ export function FilterBar({
                   <button
                     type="button"
                     className={pillClass(currentGenre === null)}
-                    onClick={() => applyFilter({ source: currentSource, genre: null })}
+                    onClick={() =>
+                      applyFilter({ source: currentSource, genre: null, noveltype: currentNoveltype })
+                    }
                   >
                     全ジャンル
                   </button>
@@ -155,11 +172,46 @@ export function FilterBar({
                       type="button"
                       title={g}
                       className={pillClass(currentGenre === g)}
-                      onClick={() => applyFilter({ source: currentSource, genre: g })}
+                      onClick={() =>
+                        applyFilter({ source: currentSource, genre: g, noveltype: currentNoveltype })
+                      }
                     >
                       {g}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="min-w-0 space-y-2">
+                <p className={labelClass}>作品種別</p>
+                <div className={chipRowClass}>
+                  <button
+                    type="button"
+                    className={pillClass(currentNoveltype === "all")}
+                    onClick={() =>
+                      applyFilter({ source: currentSource, genre: currentGenre, noveltype: "all" })
+                    }
+                  >
+                    全部
+                  </button>
+                  <button
+                    type="button"
+                    className={pillClass(currentNoveltype === "tanpen")}
+                    onClick={() =>
+                      applyFilter({ source: currentSource, genre: currentGenre, noveltype: "tanpen" })
+                    }
+                  >
+                    短編
+                  </button>
+                  <button
+                    type="button"
+                    className={pillClass(currentNoveltype === "rensai")}
+                    onClick={() =>
+                      applyFilter({ source: currentSource, genre: currentGenre, noveltype: "rensai" })
+                    }
+                  >
+                    連載
+                  </button>
                 </div>
               </div>
             </div>
@@ -174,7 +226,7 @@ export function FilterBar({
               {filterActive && (
                 <button
                   type="button"
-                  onClick={() => applyFilter({ source: null, genre: null })}
+                  onClick={() => applyFilter({ source: null, genre: null, noveltype: "all" })}
                   className="rounded-full px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-800/80 hover:text-slate-300"
                 >
                   × リセット
@@ -198,6 +250,7 @@ export function FilterBarWithRouter(props: FilterBarWithRouterProps) {
       const sp = new URLSearchParams();
       if (next.source !== null) sp.set("source", next.source);
       if (next.genre !== null && next.genre.length > 0) sp.set("genre", next.genre);
+      if (next.noveltype !== "all") sp.set("noveltype", next.noveltype);
       const q = sp.toString();
       router.push(q ? `/?${q}` : "/", { scroll: false });
     },
